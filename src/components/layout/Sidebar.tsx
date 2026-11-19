@@ -73,10 +73,10 @@ export function Sidebar({ currentPage, onNavigate, className }: SidebarProps) {
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-tight text-text-primary flex items-center gap-1.5">
-                Nexus<span className={accentTextMap[accentColor]}>OS</span>
+                Diayana<span className={accentTextMap[accentColor]}>OS</span>
               </h1>
-              <p className="text-[10px] text-text-muted font-mono tracking-wider uppercase">
-                Executive Core
+              <p className="text-[10px] text-text-muted font-mono tracking-tight text-amber-light/90">
+                'Track balancing'
               </p>
             </div>
           </div>

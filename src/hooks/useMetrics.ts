@@ -1,17 +1,23 @@
 // ============================================================
-// NexusOS — useMetrics hook
-// Personal daily metrics: habits, achievements, time wasters
+// Diayana OS 'Track balancing' — Enhanced useMetrics Hook
+// Dynamic habits, duration/goals/sub-goals, consistency analytics,
+// and auto-date timeline reflection editing
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { PersonalDailyMetrics, HabitItem } from '../lib/types';
+import type {
+  PersonalDailyMetrics,
+  HabitItem,
+  HabitSubGoal,
+} from '../lib/types';
 import { todayDate } from '../lib/localStore';
 import { useDatabase } from '../contexts/DatabaseContext';
 
-function dateOffset(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+function dateOffset(baseDate: string, days: number): string {
+  const [y, m, d] = baseDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function emptyMetrics(date: string): Omit<PersonalDailyMetrics, 'id' | 'updated_at'> {
@@ -20,14 +26,17 @@ function emptyMetrics(date: string): Omit<PersonalDailyMetrics, 'id' | 'updated_
     habits_json: [],
     achievements_list: [],
     time_wasters_list: [],
-    productivity_score: 0,
+    reflection_sub_goals: [],
+    productivity_score: 50,
   };
 }
 
-export function useMetrics() {
+export function useMetrics(initialDate?: string) {
   const { store } = useDatabase();
-  const [todayMetrics, setTodayMetrics] = useState<PersonalDailyMetrics | null>(null);
+  const [activeDate, setActiveDate] = useState<string>(initialDate || todayDate());
+  const [currentMetrics, setCurrentMetrics] = useState<PersonalDailyMetrics | null>(null);
   const [weekMetrics, setWeekMetrics] = useState<PersonalDailyMetrics[]>([]);
+  const [allHistory, setAllHistory] = useState<PersonalDailyMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
@@ -35,17 +44,19 @@ export function useMetrics() {
     if (!store) return;
     setLoading(true);
     try {
-      const today = todayDate();
-      const weekStart = dateOffset(-6);
+      const weekStart = dateOffset(activeDate, -6);
+      const historyStart = dateOffset(activeDate, -30);
 
-      const [todayData, weekData] = await Promise.all([
-        store.getMetrics(today),
-        store.getMetricsRange(weekStart, today),
+      const [selectedData, weekData, historyData] = await Promise.all([
+        store.getMetrics(activeDate),
+        store.getMetricsRange(weekStart, activeDate),
+        store.getMetricsRange(historyStart, activeDate),
       ]);
 
       if (mountedRef.current) {
-        setTodayMetrics(todayData);
+        setCurrentMetrics(selectedData);
         setWeekMetrics(weekData);
+        setAllHistory(historyData);
       }
     } catch (err) {
       console.error('[useMetrics] Failed to fetch metrics:', err);
@@ -54,7 +65,7 @@ export function useMetrics() {
         setLoading(false);
       }
     }
-  }, [store]);
+  }, [store, activeDate]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -64,209 +75,321 @@ export function useMetrics() {
     };
   }, [refresh]);
 
+  // Compute consistency metrics
+  const getConsistencyStats = useCallback(
+    (habitName?: string) => {
+      if (allHistory.length === 0) {
+        return { totalDays: 0, consistentDays: 0, missedDays: 0, consistencyRate: 0 };
+      }
+
+      let consistent = 0;
+      let evaluated = 0;
+
+      for (const day of allHistory) {
+        const habits = day.habits_json || [];
+        if (habitName) {
+          const match = habits.find((h) => h.name.toLowerCase() === habitName.toLowerCase());
+          if (match) {
+            evaluated++;
+            if (match.completed) consistent++;
+          }
+        } else {
+          if (habits.length > 0) {
+            evaluated++;
+            const completedCount = habits.filter((h) => h.completed).length;
+            if (completedCount >= habits.length * 0.5) consistent++;
+          }
+        }
+      }
+
+      const total = evaluated || allHistory.length;
+      const missed = Math.max(0, total - consistent);
+      const rate = total > 0 ? Math.round((consistent / total) * 100) : 0;
+
+      return {
+        totalDays: total,
+        consistentDays: consistent,
+        missedDays: missed,
+        consistencyRate: rate,
+      };
+    },
+    [allHistory]
+  );
+
   const upsertMetrics = useCallback(
-    async (data: Omit<PersonalDailyMetrics, 'id' | 'updated_at'>) => {
+    async (data: Partial<PersonalDailyMetrics>) => {
       if (!store) throw new Error('Database not ready');
-      const result = await store.upsertMetrics(data);
+      const targetDate = data.entry_date || activeDate;
+      const existing = await store.getMetrics(targetDate);
+      const merged: Omit<PersonalDailyMetrics, 'id' | 'updated_at'> = {
+        entry_date: targetDate,
+        habits_json: data.habits_json ?? existing?.habits_json ?? [],
+        achievements_list: data.achievements_list ?? existing?.achievements_list ?? [],
+        time_wasters_list: data.time_wasters_list ?? existing?.time_wasters_list ?? [],
+        reflection_sub_goals: data.reflection_sub_goals ?? existing?.reflection_sub_goals ?? [],
+        productivity_score: data.productivity_score ?? existing?.productivity_score ?? 50,
+      };
+
+      const result = await store.upsertMetrics(merged);
       await refresh();
       return result;
     },
-    [store, refresh],
+    [store, activeDate, refresh]
   );
 
   // ---------------------------------------------------------------------------
-  // Habit operations
+  // Habit Operations
   // ---------------------------------------------------------------------------
 
   const addHabit = useCallback(
-    async (name: string) => {
+    async (params: {
+      name: string;
+      target_duration_minutes?: number;
+      main_goal?: string;
+      sub_goals?: HabitSubGoal[];
+      frequency?: 'daily' | 'weekdays' | 'weekends' | 'custom';
+      custom_days?: string[];
+    }) => {
       if (!store) throw new Error('Database not ready');
-      const today = todayDate();
-      const current = todayMetrics ?? { ...emptyMetrics(today) } as PersonalDailyMetrics;
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
       const habits = [...(current.habits_json ?? [])];
 
       const newHabit: HabitItem = {
         id: crypto.randomUUID(),
-        name,
+        name: params.name,
         completed: false,
         streak: 0,
+        longest_streak: 0,
+        total_days_completed: 0,
+        total_days_missed: 0,
+        target_duration_minutes: params.target_duration_minutes || 30,
+        main_goal: params.main_goal || '',
+        sub_goals: params.sub_goals || [],
+        frequency: params.frequency || 'daily',
+        custom_days: params.custom_days || [],
       };
 
       habits.push(newHabit);
-
-      await store.upsertMetrics({
-        entry_date: current.entry_date || today,
-        habits_json: habits,
-        achievements_list: current.achievements_list ?? [],
-        time_wasters_list: current.time_wasters_list ?? [],
-        productivity_score: current.productivity_score ?? 0,
-      });
-      await refresh();
+      await upsertMetrics({ habits_json: habits });
     },
-    [store, todayMetrics, refresh],
+    [store, currentMetrics, activeDate, upsertMetrics]
+  );
+
+  const updateHabit = useCallback(
+    async (habitId: string, updates: Partial<HabitItem>) => {
+      if (!store) throw new Error('Database not ready');
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
+      const habits = (current.habits_json ?? []).map((h) =>
+        h.id === habitId ? { ...h, ...updates } : h
+      );
+      await upsertMetrics({ habits_json: habits });
+    },
+    [store, currentMetrics, activeDate, upsertMetrics]
   );
 
   const toggleHabit = useCallback(
     async (habitId: string) => {
       if (!store) throw new Error('Database not ready');
-      const today = todayDate();
-      const current = todayMetrics ?? { ...emptyMetrics(today) } as PersonalDailyMetrics;
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
       const habits = [...(current.habits_json ?? [])];
       const idx = habits.findIndex((h) => h.id === habitId);
-      if (idx === -1) throw new Error(`Habit ${habitId} not found`);
+      if (idx === -1) return;
 
       const habit = { ...habits[idx] };
-      const wasCompleted = habit.completed;
-      habit.completed = !wasCompleted;
+      habit.completed = !habit.completed;
 
-      // Streak calculation
       if (habit.completed) {
-        // Check yesterday's data to decide whether to increment or start fresh
-        const yesterday = dateOffset(-1);
-        const yesterdayData = await store.getMetrics(yesterday);
-        const yesterdayHabit = yesterdayData?.habits_json?.find((h) => h.name === habit.name);
-
-        if (yesterdayHabit?.completed) {
-          habit.streak = (yesterdayHabit.streak ?? 0) + 1;
-        } else {
-          habit.streak = 1;
+        habit.streak = (habit.streak || 0) + 1;
+        habit.total_days_completed = (habit.total_days_completed || 0) + 1;
+        if (habit.streak > (habit.longest_streak || 0)) {
+          habit.longest_streak = habit.streak;
         }
       } else {
-        // Un-completing resets streak to 0
-        habit.streak = 0;
+        habit.streak = Math.max(0, (habit.streak || 1) - 1);
+        habit.total_days_missed = (habit.total_days_missed || 0) + 1;
       }
 
       habits[idx] = habit;
-
-      await store.upsertMetrics({
-        entry_date: current.entry_date || today,
-        habits_json: habits,
-        achievements_list: current.achievements_list ?? [],
-        time_wasters_list: current.time_wasters_list ?? [],
-        productivity_score: current.productivity_score ?? 0,
-      });
-      await refresh();
+      await upsertMetrics({ habits_json: habits });
     },
-    [store, todayMetrics, refresh],
+    [store, currentMetrics, activeDate, upsertMetrics]
+  );
+
+  const toggleHabitSubGoal = useCallback(
+    async (habitId: string, subGoalId: string) => {
+      if (!store) throw new Error('Database not ready');
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
+      const habits = (current.habits_json ?? []).map((h) => {
+        if (h.id !== habitId) return h;
+        const updatedSubs = (h.sub_goals || []).map((sg) =>
+          sg.id === subGoalId ? { ...sg, completed: !sg.completed } : sg
+        );
+        return { ...h, sub_goals: updatedSubs };
+      });
+      await upsertMetrics({ habits_json: habits });
+    },
+    [store, currentMetrics, activeDate, upsertMetrics]
   );
 
   const removeHabit = useCallback(
     async (habitId: string) => {
       if (!store) throw new Error('Database not ready');
-      const today = todayDate();
-      const current = todayMetrics ?? { ...emptyMetrics(today) } as PersonalDailyMetrics;
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
       const habits = (current.habits_json ?? []).filter((h) => h.id !== habitId);
-
-      await store.upsertMetrics({
-        entry_date: current.entry_date || today,
-        habits_json: habits,
-        achievements_list: current.achievements_list ?? [],
-        time_wasters_list: current.time_wasters_list ?? [],
-        productivity_score: current.productivity_score ?? 0,
-      });
-      await refresh();
+      await upsertMetrics({ habits_json: habits });
     },
-    [store, todayMetrics, refresh],
+    [store, currentMetrics, activeDate, upsertMetrics]
   );
 
   // ---------------------------------------------------------------------------
-  // Achievement operations
+  // Achievement & Time Waster Operations
   // ---------------------------------------------------------------------------
 
   const addAchievement = useCallback(
     async (achievement: string) => {
       if (!store) throw new Error('Database not ready');
-      const today = todayDate();
-      const current = todayMetrics ?? { ...emptyMetrics(today) } as PersonalDailyMetrics;
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
       const achievements = [...(current.achievements_list ?? []), achievement];
-
-      await store.upsertMetrics({
-        entry_date: current.entry_date || today,
-        habits_json: current.habits_json ?? [],
-        achievements_list: achievements,
-        time_wasters_list: current.time_wasters_list ?? [],
-        productivity_score: current.productivity_score ?? 0,
-      });
-      await refresh();
+      const newScore = Math.min(
+        100,
+        50 + achievements.length * 15 - (current.time_wasters_list?.length || 0) * 10
+      );
+      await upsertMetrics({ achievements_list: achievements, productivity_score: newScore });
     },
-    [store, todayMetrics, refresh],
+    [store, currentMetrics, activeDate, upsertMetrics]
+  );
+
+  const updateAchievement = useCallback(
+    async (index: number, newText: string) => {
+      if (!store) throw new Error('Database not ready');
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
+      const achievements = [...(current.achievements_list ?? [])];
+      achievements[index] = newText;
+      await upsertMetrics({ achievements_list: achievements });
+    },
+    [store, currentMetrics, activeDate, upsertMetrics]
   );
 
   const removeAchievement = useCallback(
     async (index: number) => {
       if (!store) throw new Error('Database not ready');
-      const today = todayDate();
-      const current = todayMetrics ?? { ...emptyMetrics(today) } as PersonalDailyMetrics;
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
       const achievements = [...(current.achievements_list ?? [])];
       achievements.splice(index, 1);
-
-      await store.upsertMetrics({
-        entry_date: current.entry_date || today,
-        habits_json: current.habits_json ?? [],
-        achievements_list: achievements,
-        time_wasters_list: current.time_wasters_list ?? [],
-        productivity_score: current.productivity_score ?? 0,
-      });
-      await refresh();
+      const newScore = Math.max(
+        0,
+        50 + achievements.length * 15 - (current.time_wasters_list?.length || 0) * 10
+      );
+      await upsertMetrics({ achievements_list: achievements, productivity_score: newScore });
     },
-    [store, todayMetrics, refresh],
+    [store, currentMetrics, activeDate, upsertMetrics]
   );
-
-  // ---------------------------------------------------------------------------
-  // Time waster operations
-  // ---------------------------------------------------------------------------
 
   const addTimeWaster = useCallback(
     async (waster: string) => {
       if (!store) throw new Error('Database not ready');
-      const today = todayDate();
-      const current = todayMetrics ?? { ...emptyMetrics(today) } as PersonalDailyMetrics;
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
       const wasters = [...(current.time_wasters_list ?? []), waster];
-
-      await store.upsertMetrics({
-        entry_date: current.entry_date || today,
-        habits_json: current.habits_json ?? [],
-        achievements_list: current.achievements_list ?? [],
-        time_wasters_list: wasters,
-        productivity_score: current.productivity_score ?? 0,
-      });
-      await refresh();
+      const newScore = Math.max(
+        0,
+        50 + (current.achievements_list?.length || 0) * 15 - wasters.length * 10
+      );
+      await upsertMetrics({ time_wasters_list: wasters, productivity_score: newScore });
     },
-    [store, todayMetrics, refresh],
+    [store, currentMetrics, activeDate, upsertMetrics]
+  );
+
+  const updateTimeWaster = useCallback(
+    async (index: number, newText: string) => {
+      if (!store) throw new Error('Database not ready');
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
+      const wasters = [...(current.time_wasters_list ?? [])];
+      wasters[index] = newText;
+      await upsertMetrics({ time_wasters_list: wasters });
+    },
+    [store, currentMetrics, activeDate, upsertMetrics]
   );
 
   const removeTimeWaster = useCallback(
     async (index: number) => {
       if (!store) throw new Error('Database not ready');
-      const today = todayDate();
-      const current = todayMetrics ?? { ...emptyMetrics(today) } as PersonalDailyMetrics;
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
       const wasters = [...(current.time_wasters_list ?? [])];
       wasters.splice(index, 1);
-
-      await store.upsertMetrics({
-        entry_date: current.entry_date || today,
-        habits_json: current.habits_json ?? [],
-        achievements_list: current.achievements_list ?? [],
-        time_wasters_list: wasters,
-        productivity_score: current.productivity_score ?? 0,
-      });
-      await refresh();
+      const newScore = Math.max(
+        0,
+        50 + (current.achievements_list?.length || 0) * 15 - wasters.length * 10
+      );
+      await upsertMetrics({ time_wasters_list: wasters, productivity_score: newScore });
     },
-    [store, todayMetrics, refresh],
+    [store, currentMetrics, activeDate, upsertMetrics]
+  );
+
+  // ---------------------------------------------------------------------------
+  // Reflection Sub-Goals
+  // ---------------------------------------------------------------------------
+
+  const addReflectionSubGoal = useCallback(
+    async (title: string) => {
+      if (!store) throw new Error('Database not ready');
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
+      const subGoals = [
+        ...(current.reflection_sub_goals ?? []),
+        { id: crypto.randomUUID(), title, completed: false },
+      ];
+      await upsertMetrics({ reflection_sub_goals: subGoals });
+    },
+    [store, currentMetrics, activeDate, upsertMetrics]
+  );
+
+  const toggleReflectionSubGoal = useCallback(
+    async (subGoalId: string) => {
+      if (!store) throw new Error('Database not ready');
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
+      const subGoals = (current.reflection_sub_goals ?? []).map((sg) =>
+        sg.id === subGoalId ? { ...sg, completed: !sg.completed } : sg
+      );
+      await upsertMetrics({ reflection_sub_goals: subGoals });
+    },
+    [store, currentMetrics, activeDate, upsertMetrics]
+  );
+
+  const removeReflectionSubGoal = useCallback(
+    async (subGoalId: string) => {
+      if (!store) throw new Error('Database not ready');
+      const current = currentMetrics ?? (emptyMetrics(activeDate) as PersonalDailyMetrics);
+      const subGoals = (current.reflection_sub_goals ?? []).filter(
+        (sg) => sg.id !== subGoalId
+      );
+      await upsertMetrics({ reflection_sub_goals: subGoals });
+    },
+    [store, currentMetrics, activeDate, upsertMetrics]
   );
 
   return {
-    todayMetrics,
+    activeDate,
+    setActiveDate,
+    todayMetrics: currentMetrics,
     weekMetrics,
+    allHistory,
     loading,
+    refreshMetrics: refresh,
     upsertMetrics,
+    getConsistencyStats,
     addHabit,
+    updateHabit,
     toggleHabit,
+    toggleHabitSubGoal,
     removeHabit,
     addAchievement,
+    updateAchievement,
     removeAchievement,
     addTimeWaster,
+    updateTimeWaster,
     removeTimeWaster,
+    addReflectionSubGoal,
+    toggleReflectionSubGoal,
+    removeReflectionSubGoal,
   } as const;
 }
 

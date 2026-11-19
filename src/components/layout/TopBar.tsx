@@ -44,9 +44,14 @@ export function TopBar({ currentPage, onOpenCapture, onNavigate, className }: To
     >
       {/* Left: Page Title */}
       <div className="hidden lg:flex flex-col">
-        <h2 className="text-sm font-semibold text-text-primary leading-tight">
-          {pageMeta.title}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-text-primary leading-tight">
+            {pageMeta.title}
+          </h2>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-border/70 text-text-muted border border-border">
+            v2.1.0 Track balancing
+          </span>
+        </div>
         <span className="text-[11px] text-text-muted">
           {pageMeta.subtitle}
         </span>

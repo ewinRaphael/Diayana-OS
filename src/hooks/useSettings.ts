@@ -1,23 +1,35 @@
 // ============================================================
-// NexusOS — useSettings hook
-// Reads/writes NexusSettings from localStorage
+// Diayana OS 'Track balancing' — useSettings hook
 // ============================================================
 
 import { useState, useCallback, useEffect } from 'react';
 import type { NexusSettings } from '../lib/types';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from '../lib/supabase';
 
 const STORAGE_KEY = 'nexus_settings';
 
-const DEFAULT_SETTINGS: NexusSettings = {
+export const DEFAULT_SETTINGS: NexusSettings = {
   geminiApiKey: '',
   geminiModel: 'gemini-2.5-flash',
   customTranscriptionEndpoint: '',
   useCustomTranscription: false,
-  supabaseUrl: '',
-  supabaseAnonKey: '',
-  hermesWebhookUrl: '',
-  hermesWebhookToken: '',
-  notificationsEnabled: false,
+  supabaseUrl: DEFAULT_SUPABASE_URL,
+  supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
+  hermesWebhookUrl: 'https://vps.yourdomain.com:3300/webhooks/nexus-text',
+  hermesWebhookToken: 'nexus-secret-token',
+  telegramBotToken: '',
+  telegramChatId: '',
+  publicTunnelUrl: 'https://diayana-os.loca.lt',
+  gitBranch: 'feature/diayana-v2-track-balancing',
+  appVersion: "v2.1.0 'Track balancing'",
+  notificationsEnabled: true,
+  activeIntegrations: {
+    supabase: true,
+    gemini: false,
+    hermes: true,
+    telegram: true,
+    public_ip: true,
+  },
 };
 
 function loadSettings(): NexusSettings {
@@ -25,7 +37,12 @@ function loadSettings(): NexusSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<NexusSettings>;
-      return { ...DEFAULT_SETTINGS, ...parsed };
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        supabaseUrl: parsed.supabaseUrl || DEFAULT_SUPABASE_URL,
+        supabaseAnonKey: parsed.supabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY,
+      };
     }
   } catch {
     // Corrupted data — fall back to defaults
@@ -67,21 +84,22 @@ export function useSettings() {
 
   const updateSettings = useCallback((partial: Partial<NexusSettings>) => {
     setSettings((prev) => {
-      const next = { ...prev, ...partial };
-      saveSettings(next);
+      const updated = { ...prev, ...partial };
+      saveSettings(updated);
       dispatchSettingsEvent();
-      return next;
+      return updated;
     });
   }, []);
 
   const resetSettings = useCallback(() => {
-    const defaults = { ...DEFAULT_SETTINGS };
-    saveSettings(defaults);
-    setSettings(defaults);
+    setSettings(DEFAULT_SETTINGS);
+    saveSettings(DEFAULT_SETTINGS);
     dispatchSettingsEvent();
   }, []);
 
-  return { settings, updateSettings, resetSettings } as const;
+  return {
+    settings,
+    updateSettings,
+    resetSettings,
+  };
 }
-
-export default useSettings;

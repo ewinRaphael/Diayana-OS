@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tunnel": "npx -y localtunnel --port 5173"
   },
   "dependencies": {
     "@google/genai": "^3.6.0",

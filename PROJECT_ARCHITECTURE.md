@@ -1,15 +1,17 @@
-# NexusOS — System Architecture & Specification
+# Diayana OS 'Track balancing' — System Architecture & Specification
 
 ## 1. Executive Overview
 
-**NexusOS** is an executive-grade Progressive Web Application (PWA) designed as an AI-powered personal diary, multi-business operational hub (`Hashadz` and `Slash`), voice-to-structured-data workspace with multilingual Malayalam / English / Manglish support, dual-calendar task manager, and encrypted media/document vault.
+**Diayana OS 'Track balancing'** is an executive-grade Progressive Web Application (PWA) designed as an AI-powered personal diary, multi-business operational hub (`Hashadz` and `Slash`), voice-to-structured-data workspace with multilingual Malayalam / English / Manglish support, dual-calendar task manager, habit consistency tracker, and encrypted media/document vault.
 
 The architecture emphasizes:
+- **Track Balancing Intelligence**: Continuous equilibrium scoring between corporate enterprise operations (`Hashadz`, `Slash`) and personal health/spiritual reflections.
 - **Offline-First Resilience**: Full IndexedDB/localStorage fallback pre-populated with realistic multi-workspace seed data. Operates 100% out of the box without initial API keys.
+- **Live Supabase PostgreSQL Integration**: Direct connection to Supabase project (`vudbwbqctvbfoqnvidfr.supabase.co`) with SSR utilities, keep-alive heartbeat daemon, and full table CRUD.
+- **Free Public IP Tunneling**: Zero-cost remote tunnel access via reverse proxy (`npm run tunnel` / localtunnel), auto-reconnecting for instant mobile and external access.
 - **Multimodal AI Ingestion**: In-browser voice capture (live waveform, audio playback, file upload, text) processed via Google Gemini (`gemini-2.5-flash`) with structured JSON schema auto-distribution across entries, tasks, and daily reflections.
 - **Strict Workspace Separation**: Global context switcher (`Unified`, `Hashadz`, `Slash`, `Personal`) with dynamic accent shifting.
 - **Hostinger VPS Bridge**: Webhook bridge connecting Telegram bots and phone recordings via Gemini to Supabase.
-- **Supabase Free-Tier Keep-Alive**: Autonomous ping service preventing database hibernation.
 
 ---
 

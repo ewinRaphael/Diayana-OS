@@ -1,5 +1,5 @@
 // ============================================================
-// NexusOS — Core Type Definitions
+// Diayana OS 'Track balancing' — Core Type Definitions
 // ============================================================
 
 export type Workspace = 'hashadz' | 'slash' | 'personal';
@@ -35,7 +35,8 @@ export interface Entry {
   structured_content: string;
   audio_url: string | null;
   source: EntrySource;
-  entry_date: string;
+  entry_date: string; // supports predated and postdated dates (YYYY-MM-DD)
+  event_time?: string | null; // e.g. "14:30" or "10:00 AM"
   created_at: string;
 }
 
@@ -46,10 +47,17 @@ export interface Task {
   title: string;
   status: TaskStatus;
   priority: TaskPriority;
-  due_date: string | null;
+  due_date: string | null; // supports predated and postdated dates
   reminder_at: string | null;
   notification_sent: boolean;
+  telegram_reminder?: boolean;
   created_at: string;
+}
+
+export interface HabitSubGoal {
+  id: string;
+  title: string;
+  completed: boolean;
 }
 
 export interface HabitItem {
@@ -57,14 +65,29 @@ export interface HabitItem {
   name: string;
   completed: boolean;
   streak: number;
+  longest_streak?: number;
+  total_days_completed?: number;
+  total_days_missed?: number;
+  target_duration_minutes?: number;
+  main_goal?: string;
+  sub_goals?: HabitSubGoal[];
+  frequency?: 'daily' | 'weekdays' | 'weekends' | 'custom';
+  custom_days?: string[]; // e.g. ['Mon', 'Wed', 'Fri']
+}
+
+export interface ReflectionSubGoal {
+  id: string;
+  title: string;
+  completed: boolean;
 }
 
 export interface PersonalDailyMetrics {
   id: string;
-  entry_date: string;
+  entry_date: string; // auto date picker & timeline tracking
   habits_json: HabitItem[];
   achievements_list: string[];
   time_wasters_list: string[];
+  reflection_sub_goals?: ReflectionSubGoal[];
   productivity_score: number;
   updated_at: string;
 }
@@ -105,6 +128,17 @@ export interface GeminiResponse {
   };
 }
 
+export interface ConnectedApiItem {
+  id: string;
+  name: string;
+  category: 'database' | 'ai' | 'vps' | 'messaging' | 'network';
+  description: string;
+  status: 'connected' | 'disconnected' | 'testing';
+  lastPing?: string;
+  endpoint?: string;
+  requiresConfig?: boolean;
+}
+
 export interface NexusSettings {
   geminiApiKey: string;
   geminiModel: string;
@@ -114,5 +148,11 @@ export interface NexusSettings {
   supabaseAnonKey: string;
   hermesWebhookUrl: string;
   hermesWebhookToken: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  publicTunnelUrl?: string;
+  gitBranch?: string;
+  appVersion?: string;
   notificationsEnabled: boolean;
+  activeIntegrations?: Record<string, boolean>;
 }

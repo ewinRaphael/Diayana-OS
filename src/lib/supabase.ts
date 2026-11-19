@@ -1,9 +1,12 @@
 // ============================================================
-// NexusOS — Dynamic Supabase Client Factory
+// Diayana OS 'Track balancing' — Dynamic Supabase Client Factory
 // ============================================================
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { NexusSettings } from './types';
+
+export const DEFAULT_SUPABASE_URL = 'https://vudbwbqctvbfoqnvidfr.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_ne_-SdBPrplKkBsZTORiDQ__VUevGjz';
 
 let cachedClient: SupabaseClient | null = null;
 let cachedUrl: string | null = null;
@@ -23,7 +26,7 @@ function getSettingsFromLocalStorage(): Partial<NexusSettings> {
 
 /**
  * Returns true if Supabase URL and anon key are configured
- * (via env vars or runtime localStorage settings).
+ * (via env vars, runtime localStorage settings, or default project credentials).
  */
 export function isSupabaseConfigured(): boolean {
   const settings = getSettingsFromLocalStorage();
@@ -33,14 +36,14 @@ export function isSupabaseConfigured(): boolean {
     (typeof import.meta !== 'undefined'
       ? import.meta.env?.VITE_SUPABASE_URL
       : undefined) ||
-    '';
+    DEFAULT_SUPABASE_URL;
 
   const key =
     settings.supabaseAnonKey ||
     (typeof import.meta !== 'undefined'
       ? import.meta.env?.VITE_SUPABASE_ANON_KEY
       : undefined) ||
-    '';
+    DEFAULT_SUPABASE_ANON_KEY;
 
   return Boolean(url && key);
 }
@@ -57,14 +60,14 @@ export function getSupabaseClient(): SupabaseClient | null {
     (typeof import.meta !== 'undefined'
       ? import.meta.env?.VITE_SUPABASE_URL
       : undefined) ||
-    '';
+    DEFAULT_SUPABASE_URL;
 
   const key: string =
     settings.supabaseAnonKey ||
     (typeof import.meta !== 'undefined'
       ? import.meta.env?.VITE_SUPABASE_ANON_KEY
       : undefined) ||
-    '';
+    DEFAULT_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
     return null;
