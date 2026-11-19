@@ -1,0 +1,24 @@
+{
+  "name": "NexusOS — Executive AI Diary & Workspace",
+  "short_name": "NexusOS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090A0F",
+  "theme_color": "#090A0F",
+  "orientation": "portrait-primary",
+  "description": "Founder personal and multi-business AI workspace with Malayalam/English voice ingestion, dual calendars, and media vault.",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["productivity", "business", "lifestyle"]
+}
