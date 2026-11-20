@@ -1,6 +1,7 @@
 // ============================================================
 // NexusOS — Multimodal Gemini AI Ingestion Engine
 // Malayalam / English / Manglish Audio & Text Processing
+// With resilient Smart Offline Extractor fallback for depleted credits (HTTP 402)
 // ============================================================
 
 import { GoogleGenAI } from '@google/genai';
@@ -47,6 +48,53 @@ export function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+export function extractOfflineStructuredData(
+  text: string,
+  defaultWorkspace = 'personal',
+  isCreditsDepleted = false
+): GeminiResponse {
+  const cleanTitle = text.trim().slice(0, 50) + (text.trim().length > 50 ? '...' : '');
+  const isPersonal = defaultWorkspace === 'personal';
+  const today = new Date().toISOString().split('T')[0];
+
+  // Detect simple task intentions (e.g., words like "call", "send", "review", "order", "meeting", "complete")
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const tasks = lines
+    .filter((l) => /^(call|send|review|order|finish|complete|check|prepare|follow|fix|confirm)/i.test(l) || l.startsWith('- [ ]') || l.startsWith('*'))
+    .map((l) => ({
+      title: l.replace(/^[-*\[\]\s]+/, '').trim(),
+      due_date: today,
+      priority: 'high',
+      reminder_at: null,
+    }));
+
+  if (tasks.length === 0 && text.trim()) {
+    tasks.push({
+      title: `Action: ${cleanTitle || 'Follow up on note'}`,
+      due_date: today,
+      priority: 'high',
+      reminder_at: null,
+    });
+  }
+
+  const notice = isCreditsDepleted
+    ? '\n\n> ⚠️ *Note: Google AI Studio credits depleted (HTTP 402). Processed with Diayana OS Smart Local Parser.*'
+    : '';
+
+  return {
+    workspace: defaultWorkspace,
+    category: isPersonal ? 'journal' : 'active_log',
+    title: cleanTitle || 'Executive Capture',
+    raw_transcript: text,
+    structured_summary: `## Executive Summary\n\n- ${text.trim()}\n\n*Classified under ${defaultWorkspace.toUpperCase()} timeline.*${notice}`,
+    extracted_tasks: tasks,
+    extracted_metrics: {
+      achievements: isPersonal ? [cleanTitle] : [],
+      time_wasters: [],
+    },
+  };
+}
+
 function sanitizeResponse(raw: any, fallbackWorkspace = 'personal'): GeminiResponse {
   let ws = (raw.workspace || fallbackWorkspace).toLowerCase();
   if (!['hashadz', 'slash', 'personal'].includes(ws)) {
@@ -89,6 +137,17 @@ function sanitizeResponse(raw: any, fallbackWorkspace = 'personal'): GeminiRespo
       time_wasters: timeWasters,
     },
   };
+}
+
+function isCreditsExhaustedError(err: any): boolean {
+  const errStr = typeof err === 'string' ? err : JSON.stringify(err?.message || err || '');
+  return (
+    errStr.includes('402') ||
+    errStr.includes('RESOURCE_EXHAUSTED') ||
+    errStr.includes('prepayment credits') ||
+    errStr.includes('billing#prepay') ||
+    errStr.includes('credits are depleted')
+  );
 }
 
 export async function processAudioCapture(
@@ -136,31 +195,57 @@ export async function processAudioCapture(
     };
   }
 
-  const client = new GoogleGenAI({ apiKey });
-  const base64Audio = await blobToBase64(audioBlob);
-  const mimeType = audioBlob.type || 'audio/webm';
-  const modelName = settings.geminiModel || 'gemini-2.5-flash';
+  try {
+    const client = new GoogleGenAI({ apiKey });
+    const base64Audio = await blobToBase64(audioBlob);
+    const mimeType = audioBlob.type || 'audio/webm';
+    const modelName = settings.geminiModel || 'gemini-2.5-flash';
 
-  const response = await client.models.generateContent({
-    model: modelName,
-    contents: [
-      SYSTEM_PROMPT,
-      `Current date context: ${new Date().toISOString().split('T')[0]}`,
-      {
-        inlineData: {
-          mimeType,
-          data: base64Audio,
+    const response = await client.models.generateContent({
+      model: modelName,
+      contents: [
+        SYSTEM_PROMPT,
+        `Current date context: ${new Date().toISOString().split('T')[0]}`,
+        {
+          inlineData: {
+            mimeType,
+            data: base64Audio,
+          },
         },
+      ],
+      config: {
+        responseMimeType: 'application/json',
       },
-    ],
-    config: {
-      responseMimeType: 'application/json',
-    },
-  });
+    });
 
-  const text = response.text || '{}';
-  const parsed = JSON.parse(text);
-  return sanitizeResponse(parsed, defaultWorkspace);
+    const text = response.text || '{}';
+    const parsed = JSON.parse(text);
+    return sanitizeResponse(parsed, defaultWorkspace);
+  } catch (err: any) {
+    if (isCreditsExhaustedError(err)) {
+      console.warn('[Gemini] Prepayment credits depleted (HTTP 402). Auto-switching to Smart Local Extractor.');
+      return {
+        workspace: defaultWorkspace,
+        category: defaultWorkspace === 'personal' ? 'journal' : 'active_log',
+        title: 'Voice Recording (' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')',
+        raw_transcript: 'Audio recording captured locally. (Google AI Studio credits depleted — processed via Diayana OS Smart Local Parser).',
+        structured_summary: '## Operational Voice Entry\n\n- Audio recording captured via Diayana OS PWA Engine\n- Auto-classified under ' + defaultWorkspace.toUpperCase() + ' workspace\n\n> ⚠️ *Note: Google AI Studio credits depleted (HTTP 402). Extracted using Smart Local Parser.*',
+        extracted_tasks: [
+          {
+            title: 'Review recorded voice log',
+            due_date: new Date().toISOString().split('T')[0],
+            priority: 'medium',
+            reminder_at: null,
+          },
+        ],
+        extracted_metrics: {
+          achievements: ['Recorded operational voice entry'],
+          time_wasters: [],
+        },
+      };
+    }
+    throw err;
+  }
 }
 
 export async function processTextCapture(
@@ -170,45 +255,33 @@ export async function processTextCapture(
 ): Promise<GeminiResponse> {
   const apiKey = settings.geminiApiKey || (import.meta.env?.VITE_GEMINI_API_KEY as string) || '';
   if (!apiKey) {
-    const cleanTitle = text.trim().slice(0, 45) + (text.trim().length > 45 ? '...' : '');
-    const isPersonal = defaultWorkspace === 'personal';
-    return {
-      workspace: defaultWorkspace,
-      category: isPersonal ? 'journal' : 'active_log',
-      title: cleanTitle || 'Executive Note',
-      raw_transcript: text,
-      structured_summary: `## Executive Summary\n\n- ${text.trim()}\n\n*Classified under ${defaultWorkspace.toUpperCase()} timeline.*`,
-      extracted_tasks: [
-        {
-          title: `Action: ${cleanTitle || 'Follow up on note'}`,
-          due_date: new Date().toISOString().split('T')[0],
-          priority: 'high',
-          reminder_at: null,
-        },
-      ],
-      extracted_metrics: {
-        achievements: isPersonal ? [cleanTitle] : [],
-        time_wasters: [],
-      },
-    };
+    return extractOfflineStructuredData(text, defaultWorkspace, false);
   }
 
-  const client = new GoogleGenAI({ apiKey });
-  const modelName = settings.geminiModel || 'gemini-2.5-flash';
+  try {
+    const client = new GoogleGenAI({ apiKey });
+    const modelName = settings.geminiModel || 'gemini-2.5-flash';
 
-  const response = await client.models.generateContent({
-    model: modelName,
-    contents: [
-      SYSTEM_PROMPT,
-      `Current date context: ${new Date().toISOString().split('T')[0]}`,
-      `Input text:\n${text}`,
-    ],
-    config: {
-      responseMimeType: 'application/json',
-    },
-  });
+    const response = await client.models.generateContent({
+      model: modelName,
+      contents: [
+        SYSTEM_PROMPT,
+        `Current date context: ${new Date().toISOString().split('T')[0]}`,
+        `Input text:\n${text}`,
+      ],
+      config: {
+        responseMimeType: 'application/json',
+      },
+    });
 
-  const responseText = response.text || '{}';
-  const parsed = JSON.parse(responseText);
-  return sanitizeResponse(parsed, defaultWorkspace);
+    const responseText = response.text || '{}';
+    const parsed = JSON.parse(responseText);
+    return sanitizeResponse(parsed, defaultWorkspace);
+  } catch (err: any) {
+    if (isCreditsExhaustedError(err)) {
+      console.warn('[Gemini] Prepayment credits depleted (HTTP 402). Auto-switching to Smart Local Extractor for text.');
+      return extractOfflineStructuredData(text, defaultWorkspace, true);
+    }
+    throw err;
+  }
 }

@@ -15,6 +15,7 @@ import {
   ListTodo,
   TrendingUp,
   XCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { AudioRecorder } from './AudioRecorder';
@@ -24,7 +25,7 @@ import { useSettings } from '../../hooks/useSettings';
 import { useEntries } from '../../hooks/useEntries';
 import { useTasks } from '../../hooks/useTasks';
 import { useMetrics } from '../../hooks/useMetrics';
-import { processAudioCapture, processTextCapture } from '../../lib/gemini';
+import { processAudioCapture, processTextCapture, extractOfflineStructuredData } from '../../lib/gemini';
 import type { GeminiResponse, Workspace, EntryCategory } from '../../lib/types';
 import { cn } from '../../lib/utils';
 
@@ -102,6 +103,25 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const isCreditsError = Boolean(
+    errorMsg &&
+      (errorMsg.includes('402') ||
+        errorMsg.includes('RESOURCE_EXHAUSTED') ||
+        errorMsg.includes('prepayment credits') ||
+        errorMsg.includes('billing#prepay') ||
+        errorMsg.includes('credits are depleted'))
+  );
+
+  const handleRunOfflineParser = () => {
+    setErrorMsg(null);
+    const offlineResult = extractOfflineStructuredData(
+      textInput || 'Spoken Voice Note',
+      selectedWorkspace,
+      true
+    );
+    setGeminiResult(offlineResult);
   };
 
   // Direct manual save without AI (Fallback)
@@ -311,10 +331,55 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
 
         {/* Error Alert */}
         {errorMsg && (
-          <div className="flex items-center gap-2 p-3 text-xs bg-error/15 border border-error/30 text-error rounded-xl">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMsg}</span>
-          </div>
+          isCreditsError ? (
+            <div className="p-3.5 bg-amber/10 border border-amber/30 text-xs rounded-xl space-y-2.5 animate-fade-in">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-light shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-text-primary text-xs">
+                    Google Gemini API Credits Depleted (HTTP 402)
+                  </h4>
+                  <p className="text-text-muted mt-0.5 leading-relaxed">
+                    Your Google AI Studio account has used up its prepaid credits or free quota for this API key. You can continue immediately using the Diayana OS Smart Local Parser to extract tasks and save your notes without losing any data!
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber/20">
+                <button
+                  type="button"
+                  onClick={handleRunOfflineParser}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber/20 hover:bg-amber/30 text-amber-light font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Extract & Process with Smart Local Parser</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={saveFallbackManual}
+                  className="px-3 py-1.5 bg-obsidian border border-border text-text-muted hover:text-text-primary rounded-lg transition-colors cursor-pointer"
+                >
+                  Save as Plain Note
+                </button>
+
+                <a
+                  href="https://aistudio.google.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-[11px] text-purple-light hover:underline ml-auto"
+                >
+                  <span>Google AI Studio Billing</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 p-3 text-xs bg-error/15 border border-error/30 text-error rounded-xl">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span className="break-all">{errorMsg}</span>
+            </div>
+          )
         )}
 
         {/* Success Alert */}

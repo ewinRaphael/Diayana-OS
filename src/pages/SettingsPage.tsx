@@ -241,7 +241,13 @@ INSERT INTO _keep_alive (id, status) VALUES (1, 'active') ON CONFLICT (id) DO NO
         }),
       });
       const elapsed = Math.round(performance.now() - start);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        if (res.status === 402 || errorJson?.error?.code === 402 || errorJson?.error?.status === 'RESOURCE_EXHAUSTED') {
+          throw new Error('Google AI Studio credits depleted (HTTP 402 RESOURCE_EXHAUSTED). Please top up credits or generate a new API key at https://aistudio.google.com/');
+        }
+        throw new Error(`HTTP ${res.status}: ${errorJson?.error?.message || res.statusText}`);
+      }
       setGeminiTestStatus(`✓ Gemini API Connected (${elapsed}ms). Model ${geminiModel} is responsive.`);
     } catch (err: any) {
       setGeminiTestStatus(`✗ Gemini Ping Failed: ${err.message}`);
