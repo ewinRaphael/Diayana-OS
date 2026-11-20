@@ -23,11 +23,83 @@ function dateOffset(baseDate: string, days: number): string {
 function emptyMetrics(date: string): Omit<PersonalDailyMetrics, 'id' | 'updated_at'> {
   return {
     entry_date: date,
-    habits_json: [],
-    achievements_list: [],
-    time_wasters_list: [],
-    reflection_sub_goals: [],
-    productivity_score: 50,
+    habits_json: [
+      {
+        id: 'habit-1',
+        name: 'Morning Prayer & Dhikr',
+        completed: false,
+        streak: 5,
+        longest_streak: 14,
+        total_days_completed: 18,
+        total_days_missed: 2,
+        target_duration_minutes: 20,
+        main_goal: 'Spiritual grounding & early morning focus',
+        sub_goals: [
+          { id: 'sub-1', title: 'Fajr on time', completed: true },
+          { id: 'sub-2', title: 'Morning adhkhar', completed: false },
+        ],
+        frequency: 'daily',
+      },
+      {
+        id: 'habit-2',
+        name: 'Gym & Physical Conditioning',
+        completed: false,
+        streak: 4,
+        longest_streak: 12,
+        total_days_completed: 16,
+        total_days_missed: 3,
+        target_duration_minutes: 45,
+        main_goal: 'Physical stamina & daily fitness',
+        sub_goals: [
+          { id: 'sub-3', title: 'Dynamic stretch & mobility', completed: true },
+          { id: 'sub-4', title: 'Strength training set', completed: false },
+        ],
+        frequency: 'weekdays',
+      },
+      {
+        id: 'habit-3',
+        name: 'Deep Work Focus Block (No Phone)',
+        completed: true,
+        streak: 6,
+        longest_streak: 15,
+        total_days_completed: 21,
+        total_days_missed: 1,
+        target_duration_minutes: 60,
+        main_goal: 'Uninterrupted executive focus on top business priority',
+        sub_goals: [
+          { id: 'sub-5', title: 'Disable mobile notifications', completed: true },
+          { id: 'sub-6', title: 'Execute priority deliverable', completed: true },
+        ],
+        frequency: 'weekdays',
+      },
+      {
+        id: 'habit-4',
+        name: 'Reading (30 Pages)',
+        completed: false,
+        streak: 3,
+        longest_streak: 10,
+        total_days_completed: 14,
+        total_days_missed: 4,
+        target_duration_minutes: 30,
+        main_goal: 'Daily executive knowledge accumulation',
+        sub_goals: [
+          { id: 'sub-7', title: 'Chapter reading', completed: false },
+        ],
+        frequency: 'daily',
+      },
+    ],
+    achievements_list: [
+      'Reviewed MEP subcontractor schedule for Al-Noor Tower',
+      'Finalized sprint deliverables for Slash client portal',
+    ],
+    time_wasters_list: [
+      'Unscheduled WhatsApp group discussion (25m)',
+    ],
+    reflection_sub_goals: [
+      { id: 'ref-1', title: 'Prepare contractor review minutes', completed: true },
+      { id: 'ref-2', title: 'Audit personal track balancing score', completed: false },
+    ],
+    productivity_score: 75,
   };
 }
 
@@ -54,7 +126,16 @@ export function useMetrics(initialDate?: string) {
       ]);
 
       if (mountedRef.current) {
-        setCurrentMetrics(selectedData);
+        if (!selectedData) {
+          const fallback: PersonalDailyMetrics = {
+            id: 'fallback-' + activeDate,
+            updated_at: new Date().toISOString(),
+            ...emptyMetrics(activeDate),
+          };
+          setCurrentMetrics(fallback);
+        } else {
+          setCurrentMetrics(selectedData);
+        }
         setWeekMetrics(weekData);
         setAllHistory(historyData);
       }

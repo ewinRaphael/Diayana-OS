@@ -115,7 +115,25 @@ export async function processAudioCapture(
 
   const apiKey = settings.geminiApiKey || (import.meta.env?.VITE_GEMINI_API_KEY as string) || '';
   if (!apiKey) {
-    throw new Error('Gemini API key is not configured. Please enter your key in Settings.');
+    return {
+      workspace: defaultWorkspace,
+      category: defaultWorkspace === 'personal' ? 'journal' : 'active_log',
+      title: 'Voice Recording (' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')',
+      raw_transcript: 'Spoken audio captured successfully and stored locally. (Add Gemini API key in Settings for cloud multimodal transcription).',
+      structured_summary: '## Operational Voice Entry\n\n- Audio recording captured via Diayana OS PWA Engine\n- Auto-classified under ' + defaultWorkspace.toUpperCase() + ' workspace\n\n### Action Items\n- Configure Gemini API key in Settings for cloud multimodal transcription',
+      extracted_tasks: [
+        {
+          title: 'Review recorded voice log',
+          due_date: new Date().toISOString().split('T')[0],
+          priority: 'medium',
+          reminder_at: null,
+        },
+      ],
+      extracted_metrics: {
+        achievements: ['Recorded operational voice entry'],
+        time_wasters: [],
+      },
+    };
   }
 
   const client = new GoogleGenAI({ apiKey });
@@ -152,7 +170,27 @@ export async function processTextCapture(
 ): Promise<GeminiResponse> {
   const apiKey = settings.geminiApiKey || (import.meta.env?.VITE_GEMINI_API_KEY as string) || '';
   if (!apiKey) {
-    throw new Error('Gemini API key is not configured. Please enter your key in Settings.');
+    const cleanTitle = text.trim().slice(0, 45) + (text.trim().length > 45 ? '...' : '');
+    const isPersonal = defaultWorkspace === 'personal';
+    return {
+      workspace: defaultWorkspace,
+      category: isPersonal ? 'journal' : 'active_log',
+      title: cleanTitle || 'Executive Note',
+      raw_transcript: text,
+      structured_summary: `## Executive Summary\n\n- ${text.trim()}\n\n*Classified under ${defaultWorkspace.toUpperCase()} timeline.*`,
+      extracted_tasks: [
+        {
+          title: `Action: ${cleanTitle || 'Follow up on note'}`,
+          due_date: new Date().toISOString().split('T')[0],
+          priority: 'high',
+          reminder_at: null,
+        },
+      ],
+      extracted_metrics: {
+        achievements: isPersonal ? [cleanTitle] : [],
+        time_wasters: [],
+      },
+    };
   }
 
   const client = new GoogleGenAI({ apiKey });

@@ -12,13 +12,14 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import { getStore, resetStore, type IDataStore } from '../lib/database';
+import { getStore, resetStore, getStoreStatus, type IDataStore } from '../lib/database';
 
 interface DatabaseContextType {
   store: IDataStore | null;
   isLoading: boolean;
   error: string | null;
   refreshStore: () => Promise<void>;
+  storeStatus: ReturnType<typeof getStoreStatus>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
@@ -91,6 +92,7 @@ function DatabaseProvider({ children }: DatabaseProviderProps) {
     isLoading,
     error,
     refreshStore,
+    storeStatus: getStoreStatus(),
   };
 
   return (

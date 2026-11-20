@@ -402,12 +402,25 @@ function createSeedMetrics(): PersonalDailyMetrics[] {
     const date = daysAgo(dayOffset);
     const score = Math.floor(Math.random() * 51) + 40; // 40-90
 
-    const habits: HabitItem[] = habitNames.map((name) => ({
-      id: generateId(),
-      name,
-      completed: Math.random() > (dayOffset < 3 ? 0.25 : 0.4),
-      streak: Math.max(0, 7 - dayOffset - (Math.random() > 0.6 ? Math.floor(Math.random() * 3) : 0)),
-    }));
+    const habits: HabitItem[] = habitNames.map((name) => {
+      const isDone = Math.random() > (dayOffset < 3 ? 0.25 : 0.4);
+      return {
+        id: generateId(),
+        name,
+        completed: isDone,
+        streak: Math.max(1, 7 - dayOffset),
+        longest_streak: 15,
+        total_days_completed: 18 - dayOffset,
+        total_days_missed: dayOffset > 4 ? 2 : 1,
+        target_duration_minutes: name.includes('Reading') ? 30 : name.includes('Exercise') ? 45 : 15,
+        main_goal: `Consistent daily focus on ${name}`,
+        sub_goals: [
+          { id: generateId(), title: 'Phase 1: Morning execution', completed: true },
+          { id: generateId(), title: 'Phase 2: Evening review & signoff', completed: isDone },
+        ],
+        frequency: 'daily',
+      };
+    });
 
     // Pick 2-3 random achievements
     const achieveCount = 2 + Math.floor(Math.random() * 2);

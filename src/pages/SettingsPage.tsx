@@ -23,6 +23,7 @@ import {
   Check,
   PackageCheck,
   ExternalLink,
+  AlertCircle,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { useSettings } from '../hooks/useSettings';
@@ -39,8 +40,86 @@ import { cn } from '../lib/utils';
 
 export function SettingsPage() {
   const { settings, updateSettings } = useSettings();
-  const { store } = useDatabase();
+  const { store, refreshStore, storeStatus } = useDatabase();
   const { accentColor } = useWorkspace();
+
+  const [copiedSchema, setCopiedSchema] = useState(false);
+
+  const SCHEMA_SQL = `-- Diayana OS 'Track balancing' — PostgreSQL Schema
+-- Paste this in Supabase Dashboard SQL Editor & Click RUN
+
+CREATE TABLE IF NOT EXISTS projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace TEXT NOT NULL CHECK (workspace IN ('hashadz', 'slash')),
+  name TEXT NOT NULL,
+  client_name TEXT,
+  status TEXT DEFAULT 'Active' CHECK (status IN ('Planning', 'Active', 'On Hold', 'Completed')),
+  metadata_json JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace TEXT NOT NULL CHECK (workspace IN ('hashadz', 'slash', 'personal')),
+  category TEXT NOT NULL CHECK (category IN ('meeting', 'project', 'active_log', 'journal')),
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  raw_transcript TEXT,
+  structured_content TEXT,
+  audio_url TEXT,
+  source TEXT DEFAULT 'pwa' CHECK (source IN ('pwa', 'telegram', 'phone_call', 'hermes_api')),
+  entry_date DATE DEFAULT CURRENT_DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace TEXT NOT NULL CHECK (workspace IN ('hashadz', 'slash', 'personal')),
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  status TEXT DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'done')),
+  priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  due_date DATE,
+  reminder_at TIMESTAMPTZ,
+  notification_sent BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS personal_daily_metrics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entry_date DATE UNIQUE NOT NULL DEFAULT CURRENT_DATE,
+  habits_json JSONB DEFAULT '[]'::jsonb,
+  achievements_list JSONB DEFAULT '[]'::jsonb,
+  time_wasters_list JSONB DEFAULT '[]'::jsonb,
+  productivity_score INT DEFAULT 0,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS media_vault (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace TEXT NOT NULL CHECK (workspace IN ('hashadz', 'slash', 'personal')),
+  entry_id UUID REFERENCES entries(id) ON DELETE SET NULL,
+  file_type TEXT NOT NULL CHECK (file_type IN ('photo', 'document')),
+  file_name TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  file_size_kb INT,
+  caption TEXT,
+  uploaded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS _keep_alive (
+  id INT PRIMARY KEY DEFAULT 1,
+  last_pinged_at TIMESTAMPTZ DEFAULT NOW(),
+  status TEXT DEFAULT 'active'
+);
+INSERT INTO _keep_alive (id, status) VALUES (1, 'active') ON CONFLICT (id) DO NOTHING;
+`;
+
+  const handleCopySchema = () => {
+    navigator.clipboard.writeText(SCHEMA_SQL);
+    setCopiedSchema(true);
+    setTimeout(() => setCopiedSchema(false), 2500);
+  };
 
   // Local configuration states
   const [geminiApiKey, setGeminiApiKey] = useState(settings.geminiApiKey || '');
@@ -403,6 +482,55 @@ export function SettingsPage() {
                 Port: 5432 · Free Tier Keep-Alive Active
               </span>
             </div>
+
+            {/* Offline-First fallback notice when tables are not yet created in Supabase */}
+            {storeStatus.schemaStatus === 'missing_tables' && (
+              <div className="p-3.5 bg-amber/10 border border-amber/30 rounded-xl space-y-2.5 text-xs animate-fade-in">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-light shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-text-primary">
+                      Local Offline-First Engine Active
+                    </h4>
+                    <p className="text-text-muted mt-0.5 leading-relaxed">
+                      Supabase project is configured, but the database schema tables (<code className="text-amber-light">entries, tasks, projects</code>) are not yet generated in Supabase. Diayana OS is running on the high-speed local offline store so every button, meeting, habit, and calendar works immediately.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber/20">
+                  <button
+                    type="button"
+                    onClick={handleCopySchema}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber/20 hover:bg-amber/30 text-amber-light font-semibold rounded-lg transition-colors cursor-pointer"
+                  >
+                    {copiedSchema ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedSchema ? 'SQL Copied to Clipboard!' : 'Copy Schema SQL'}</span>
+                  </button>
+
+                  <a
+                    href="https://supabase.com/dashboard/project/vudbwbqctvbfoqnvidfr/sql/new"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-obsidian border border-border text-text-primary hover:border-amber/40 rounded-lg transition-colors"
+                  >
+                    <span>Open Supabase SQL Editor</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await refreshStore();
+                      handleTestSupabase();
+                    }}
+                    className="px-3 py-1.5 bg-obsidian border border-border text-text-muted hover:text-text-primary rounded-lg transition-colors cursor-pointer"
+                  >
+                    Recheck Schema
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Requirement Checklist */}
             <div className="flex items-center gap-3 text-[11px] font-mono text-text-muted">

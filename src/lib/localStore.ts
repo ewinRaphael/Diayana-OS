@@ -204,17 +204,33 @@ class LocalStore implements IDataStore {
     if (!this.db) {
       this.db = await openDB();
       try {
-        const existingEntries = await txGet<Entry>(this.db, STORES.entries);
-        if (!existingEntries || existingEntries.length === 0) {
-          const seed = generateSeedData();
+        const [entries, projects, tasks, metrics, media] = await Promise.all([
+          txGet<Entry>(this.db, STORES.entries),
+          txGet<Project>(this.db, STORES.projects),
+          txGet<Task>(this.db, STORES.tasks),
+          txGet<PersonalDailyMetrics>(this.db, STORES.metrics),
+          txGet<MediaItem>(this.db, STORES.media),
+        ]);
+
+        const seed = generateSeedData();
+
+        if (!projects || projects.length === 0) {
           for (const p of seed.projects) await txPut(this.db, STORES.projects, p);
+        }
+        if (!entries || entries.length === 0) {
           for (const e of seed.entries) await txPut(this.db, STORES.entries, e);
+        }
+        if (!tasks || tasks.length === 0) {
           for (const t of seed.tasks) await txPut(this.db, STORES.tasks, t);
+        }
+        if (!metrics || metrics.length === 0) {
           for (const m of seed.metrics) await txPut(this.db, STORES.metrics, m);
+        }
+        if (!media || media.length === 0) {
           for (const med of seed.media) await txPut(this.db, STORES.media, med);
         }
       } catch (err) {
-        console.warn('IndexedDB initial seed failed or already present:', err);
+        console.warn('IndexedDB seed verification warning:', err);
       }
     }
   }
