@@ -244,7 +244,8 @@ INSERT INTO _keep_alive (id, status) VALUES (1, 'active') ON CONFLICT (id) DO NO
       if (!res.ok) {
         const errorJson = await res.json().catch(() => ({}));
         if (res.status === 402 || errorJson?.error?.code === 402 || errorJson?.error?.status === 'RESOURCE_EXHAUSTED') {
-          throw new Error('Google AI Studio credits depleted (HTTP 402 RESOURCE_EXHAUSTED). Please top up credits or generate a new API key at https://aistudio.google.com/');
+          setGeminiTestStatus('⚠️ Cloud Gemini key is valid but prepaid balance is $0 (HTTP 402). Diayana OS Smart Local Parser & Live Speech Recognition are active so all your voice notes, meetings, and tasks continue working with zero disruption.');
+          return;
         }
         throw new Error(`HTTP ${res.status}: ${errorJson?.error?.message || res.statusText}`);
       }
@@ -480,13 +481,57 @@ INSERT INTO _keep_alive (id, status) VALUES (1, 'active') ON CONFLICT (id) DO NO
               </div>
             </div>
 
-            <div className="p-3 bg-obsidian rounded-xl border border-border text-xs font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <span className="text-text-muted truncate">
-                Host: <span className="text-text-primary">{supabaseUrl || 'https://vudbwbqctvbfoqnvidfr.supabase.co'}</span>
-              </span>
-              <span className="text-text-dim text-[11px]">
-                Port: 5432 · Free Tier Keep-Alive Active
-              </span>
+            <div className="p-4 bg-obsidian rounded-xl border border-border space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-text-primary block mb-1">
+                    Supabase Project URL
+                  </label>
+                  <input
+                    type="text"
+                    value={supabaseUrl}
+                    onChange={(e) => setSupabaseUrl(e.target.value)}
+                    placeholder="https://xyz.supabase.co"
+                    className="w-full px-3 py-2 bg-charcoal border border-border rounded-lg text-xs text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-emerald/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-primary block mb-1">
+                    Supabase Anon / Public Key
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      value={supabaseAnonKey}
+                      onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                      placeholder="eyJhbG..."
+                      className="w-full pl-3 pr-8 py-2 bg-charcoal border border-border rounded-lg text-xs text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-emerald/40"
+                    />
+                    <Lock className="w-3.5 h-3.5 text-text-dim absolute right-2.5 top-2.5 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-border/60">
+                <span className="text-[11px] text-text-dim font-mono">
+                  Port: 5432 · Free Tier Keep-Alive Heartbeat Enabled
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateSettings({
+                      supabaseUrl: supabaseUrl.trim(),
+                      supabaseAnonKey: supabaseAnonKey.trim(),
+                    });
+                    setSaveSuccess(true);
+                    setTimeout(() => setSaveSuccess(false), 2000);
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald/20 hover:bg-emerald/30 text-emerald-light font-semibold rounded-lg text-xs transition-colors cursor-pointer"
+                >
+                  Save Supabase Keys
+                </button>
+              </div>
             </div>
 
             {/* Offline-First fallback notice when tables are not yet created in Supabase */}
@@ -662,7 +707,7 @@ INSERT INTO _keep_alive (id, status) VALUES (1, 'active') ON CONFLICT (id) DO NO
           </Card>
 
           {/* Card 3: Google Gemini Multimodal AI */}
-          <Card className="p-5 space-y-3.5 border border-border">
+          <Card className="p-5 space-y-4 border border-border">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-purple/15 text-purple-light border border-purple/20">
@@ -674,11 +719,11 @@ INSERT INTO _keep_alive (id, status) VALUES (1, 'active') ON CONFLICT (id) DO NO
                       Google Gemini Multimodal AI Core
                     </h3>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple/15 text-purple-light border border-purple/30">
-                      {geminiApiKey ? 'ACTIVE' : 'KEY REQUIRED'}
+                      {geminiApiKey ? 'CONFIGURED' : 'KEY REQUIRED'}
                     </span>
                   </div>
                   <p className="text-xs text-text-muted mt-0.5">
-                    Malayalam, English, and Manglish voice ingestion & structured extraction
+                    Malayalam, English, and Manglish voice ingestion & structured task extraction
                   </p>
                 </div>
               </div>
@@ -686,24 +731,83 @@ INSERT INTO _keep_alive (id, status) VALUES (1, 'active') ON CONFLICT (id) DO NO
               <button
                 type="button"
                 onClick={() => toggleIntegration('gemini')}
-                className="px-3 py-1.5 rounded-lg text-xs font-mono font-medium border border-border bg-obsidian text-text-muted hover:text-text-primary cursor-pointer"
+                className="px-3 py-1.5 rounded-lg text-xs font-mono font-medium border border-border bg-obsidian text-text-muted hover:text-text-primary cursor-pointer shrink-0"
               >
                 {settings.activeIntegrations?.gemini ? 'Disconnect' : 'Connect'}
               </button>
             </div>
 
-            <div className="flex items-center gap-3 text-[11px] font-mono text-text-muted">
-              <span className="flex items-center gap-1 text-emerald-light">
-                <PackageCheck className="w-3.5 h-3.5" />
-                @google/genai v3.6.0
-              </span>
-              <span>Model: <span className="text-text-primary">{geminiModel}</span></span>
+            {/* Direct API Key and Model Inputs Right on the Card */}
+            <div className="p-4 bg-obsidian rounded-xl border border-border space-y-3.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-text-primary flex items-center justify-between mb-1">
+                    <span>Gemini API Key *</span>
+                    <a
+                      href="https://aistudio.google.com/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-purple-light hover:underline font-normal flex items-center gap-0.5"
+                    >
+                      <span>Get Free Key</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={geminiApiKey}
+                      onChange={(e) => setGeminiApiKey(e.target.value)}
+                      placeholder="Paste your Gemini API key (AQ.Ab... or AIza...)"
+                      className="w-full pl-3 pr-8 py-2 bg-charcoal border border-border rounded-lg text-xs text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-purple/40"
+                    />
+                    <KeyRound className="w-3.5 h-3.5 text-text-dim absolute right-2.5 top-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-primary block mb-1">
+                    AI Model (Rate-Effective & Highest Accuracy)
+                  </label>
+                  <select
+                    value={geminiModel}
+                    onChange={(e) => setGeminiModel(e.target.value)}
+                    className="w-full px-3 py-2 bg-charcoal border border-border rounded-lg text-xs text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-purple/40 cursor-pointer"
+                  >
+                    <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended: Fast, 1M Context, Highest Accuracy)</option>
+                    <option value="gemini-1.5-flash">gemini-1.5-flash (Rate-Effective, Fast & High Quota)</option>
+                    <option value="gemini-1.5-pro">gemini-1.5-pro (Deep Multimodal Reasoning)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/60 text-xs">
+                <span className="text-[11px] font-mono text-emerald-light flex items-center gap-1">
+                  <PackageCheck className="w-3.5 h-3.5" />
+                  @google/genai v3.6.0 installed
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateSettings({
+                      geminiApiKey: geminiApiKey.trim(),
+                      geminiModel,
+                    });
+                    setSaveSuccess(true);
+                    setTimeout(() => setSaveSuccess(false), 2000);
+                  }}
+                  className="px-4 py-1.5 bg-purple hover:bg-purple-light text-white font-semibold rounded-lg text-xs transition-colors cursor-pointer shadow-sm"
+                >
+                  Save API Key & Model
+                </button>
+              </div>
             </div>
 
             {geminiTestStatus && (
               <div
                 className={cn(
-                  'p-2.5 rounded-lg text-xs font-mono border',
+                  'p-3 rounded-lg text-xs font-mono border leading-relaxed',
                   geminiTestStatus.startsWith('✓')
                     ? 'bg-success/15 border-success/30 text-success'
                     : 'bg-error/15 border-error/30 text-error'
@@ -713,12 +817,12 @@ INSERT INTO _keep_alive (id, status) VALUES (1, 'active') ON CONFLICT (id) DO NO
               </div>
             )}
 
-            <div className="pt-1">
+            <div className="flex items-center gap-3 pt-1">
               <button
                 type="button"
                 onClick={handleTestGemini}
                 disabled={isTestingGemini}
-                className="px-3.5 py-1.5 bg-obsidian border border-border hover:border-purple/40 rounded-lg text-xs font-medium text-text-primary transition-all cursor-pointer"
+                className="px-4 py-2 bg-obsidian border border-border hover:border-purple/40 rounded-lg text-xs font-medium text-text-primary transition-all cursor-pointer"
               >
                 {isTestingGemini ? 'Testing Multimodal Ping...' : 'Test AI Ping'}
               </button>

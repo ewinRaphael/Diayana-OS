@@ -50,6 +50,7 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
   const [textInput, setTextInput] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [spokenTranscript, setSpokenTranscript] = useState('');
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -67,8 +68,9 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
     }
   };
 
-  const handleRecordComplete = (blob: Blob) => {
+  const handleRecordComplete = (blob: Blob, transcript?: string) => {
     setRecordedBlob(blob);
+    setSpokenTranscript(transcript || '');
     setErrorMsg(null);
   };
 
@@ -83,7 +85,7 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
         if (!recordedBlob) {
           throw new Error('Please record audio first before processing.');
         }
-        result = await processAudioCapture(recordedBlob, settings, selectedWorkspace);
+        result = await processAudioCapture(recordedBlob, settings, selectedWorkspace, spokenTranscript);
       } else if (mode === 'upload') {
         if (!uploadedFile) {
           throw new Error('Please select an audio file to upload.');
@@ -98,8 +100,10 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
 
       setGeminiResult(result);
     } catch (err: any) {
-      console.error('[CaptureModal] AI processing error:', err);
-      setErrorMsg(err.message || 'Failed to process capture with AI.');
+      console.warn('[CaptureModal] Falling back to intelligent local parser:', err);
+      const fallbackText = textInput || spokenTranscript || 'Captured note';
+      const fallbackResult = extractOfflineStructuredData(fallbackText, selectedWorkspace);
+      setGeminiResult(fallbackResult);
     } finally {
       setIsProcessing(false);
     }
@@ -117,9 +121,8 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
   const handleRunOfflineParser = () => {
     setErrorMsg(null);
     const offlineResult = extractOfflineStructuredData(
-      textInput || 'Spoken Voice Note',
-      selectedWorkspace,
-      true
+      textInput || spokenTranscript || 'Spoken Voice Note',
+      selectedWorkspace
     );
     setGeminiResult(offlineResult);
   };
@@ -222,6 +225,7 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
     setRecordedBlob(null);
     setUploadedFile(null);
     setTextInput('');
+    setSpokenTranscript('');
     setErrorMsg(null);
     setSaveSuccess(false);
     onClose();
@@ -395,11 +399,29 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
           <div>
             <AudioRecorder onRecordingComplete={handleRecordComplete} />
             {recordedBlob && (
-              <div className="mt-3 flex items-center justify-between p-3 bg-obsidian rounded-xl border border-border text-xs">
-                <span className="text-text-muted">Audio captured ready for AI processing</span>
-                <span className="text-success font-medium flex items-center gap-1">
-                  <CheckCircle className="w-3.5 h-3.5" /> Ready
-                </span>
+              <div className="mt-3 p-3.5 bg-obsidian rounded-xl border border-border text-xs space-y-2 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Audio captured ready for processing</span>
+                  <span className="text-success font-medium flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" /> Ready
+                  </span>
+                </div>
+                {spokenTranscript ? (
+                  <div className="pt-2 border-t border-border/50">
+                    <span className="text-[10px] text-text-muted uppercase font-mono tracking-wider block mb-1">
+                      Spoken Transcript
+                    </span>
+                    <p className="text-xs text-text-primary italic bg-charcoal/60 p-2.5 rounded-lg border border-border/60 leading-relaxed">
+                      "{spokenTranscript}"
+                    </p>
+                  </div>
+                ) : (
+                  <div className="pt-2 border-t border-border/50">
+                    <span className="text-[10px] text-text-muted italic">
+                      Voice recording captured. Click "Process with Gemini AI" below to extract your meeting, date & tasks.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

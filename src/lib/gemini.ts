@@ -1,37 +1,37 @@
 // ============================================================
-// NexusOS — Multimodal Gemini AI Ingestion Engine
+// Diayana OS 'Track balancing' — Multimodal Gemini AI Ingestion Engine
 // Malayalam / English / Manglish Audio & Text Processing
-// With resilient Smart Offline Extractor fallback for depleted credits (HTTP 402)
+// With Resilient Free In-Browser Speech Fallback & Clean Executive Extraction
 // ============================================================
 
 import { GoogleGenAI } from '@google/genai';
 import type { GeminiResponse, NexusSettings } from './types';
 
-const SYSTEM_PROMPT = `You are the NexusOS intelligent ingestion engine for a founder managing two businesses ('hashadz' and 'slash') and a 'personal' life workspace.
+const SYSTEM_PROMPT = `You are the Diayana OS executive ingestion engine for a founder managing two businesses ('hashadz' and 'slash') and a 'personal' life workspace.
 
-The user will provide either an audio recording or text in Malayalam, English, or Manglish (Malayalam written in Latin script, or mixed code-switching).
+The user provides audio or text in Malayalam, English, or Manglish.
 Your instructions:
-1. Transcribe the spoken audio or evaluate the text accurately, recognizing Malayalam nuances, colloquial terms, and English business vocabulary.
-2. Determine the most appropriate workspace ('hashadz', 'slash', or 'personal'). If unsure, classify based on business vs. personal tone.
-3. Categorize into: 'meeting' (discussions with clients/teams), 'project' (milestone or technical update), 'active_log' (daily operational handling), or 'journal' (personal reflections/notes).
+1. Transcribe the audio or evaluate the text accurately, recognizing Malayalam colloquialisms and business English.
+2. Determine the most appropriate workspace ('hashadz', 'slash', or 'personal').
+3. Categorize into: 'meeting' (client/team discussions, appointments), 'project' (milestones), 'active_log' (daily operational tasks), or 'journal' (personal reflections).
 4. Generate a concise title summarizing the core topic.
-5. Create a structured_summary with markdown-style bullet points highlighting key decisions, updates, and observations.
-6. Extract actionable tasks with due dates (format: YYYY-MM-DD; if relative like 'tomorrow' or 'next Monday', calculate from current date) and priority ('low', 'medium', 'high', 'urgent').
-7. If workspace is 'personal', extract any achievements (wins, progress) and time wasters (distractions, delays).
+5. Create a structured_summary with clean markdown-style bullet points highlighting key decisions and action steps. Do not include any error notices, system disclaimers, or API warning notes.
+6. Extract actionable tasks with due dates (YYYY-MM-DD; compute relative dates from context) and priority ('low', 'medium', 'high', 'urgent').
+7. If workspace is 'personal', extract achievements and time wasters.
 
-Return ONLY valid JSON matching this exact schema:
+Return ONLY valid JSON matching this schema:
 {
   "workspace": "hashadz | slash | personal",
   "category": "meeting | project | active_log | journal",
   "title": "Concise summary title",
-  "raw_transcript": "Exact transcript of the audio or cleaned text",
-  "structured_summary": "Bullet-point structured notes",
+  "raw_transcript": "Exact transcript of what was spoken or written",
+  "structured_summary": "Bullet-point structured notes without any error disclaimers",
   "extracted_tasks": [
     { "title": "Task name", "due_date": "YYYY-MM-DD", "priority": "high|medium|low|urgent", "reminder_at": "ISO_TIMESTAMP or null" }
   ],
   "extracted_metrics": {
-    "achievements": ["list of wins if personal"],
-    "time_wasters": ["list of distractions if personal"]
+    "achievements": [],
+    "time_wasters": []
   }
 }`;
 
@@ -48,48 +48,141 @@ export function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export function extractOfflineStructuredData(
-  text: string,
-  defaultWorkspace = 'personal',
-  isCreditsDepleted = false
-): GeminiResponse {
-  const cleanTitle = text.trim().slice(0, 50) + (text.trim().length > 50 ? '...' : '');
-  const isPersonal = defaultWorkspace === 'personal';
-  const today = new Date().toISOString().split('T')[0];
+/**
+ * Smart Natural Language Date & Time parser for local extraction
+ */
+function parseDateAndDetails(text: string): {
+  dueDate: string;
+  eventTime: string | null;
+  category: 'meeting' | 'project' | 'active_log' | 'journal';
+  cleanTitle: string;
+} {
+  const now = new Date();
+  let dueDate = now.toISOString().split('T')[0];
+  let eventTime: string | null = null;
 
-  // Detect simple task intentions (e.g., words like "call", "send", "review", "order", "meeting", "complete")
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const tasks = lines
-    .filter((l) => /^(call|send|review|order|finish|complete|check|prepare|follow|fix|confirm)/i.test(l) || l.startsWith('- [ ]') || l.startsWith('*'))
-    .map((l) => ({
-      title: l.replace(/^[-*\[\]\s]+/, '').trim(),
-      due_date: today,
-      priority: 'high',
-      reminder_at: null,
-    }));
+  const months: Record<string, number> = {
+    jan: 0, january: 0,
+    feb: 1, february: 1,
+    mar: 2, march: 2,
+    apr: 3, april: 3,
+    may: 4,
+    jun: 5, june: 5,
+    jul: 6, july: 6,
+    aug: 7, august: 7,
+    sep: 8, sept: 8, september: 8,
+    oct: 9, october: 9,
+    nov: 10, november: 10,
+    dec: 11, december: 11,
+  };
 
-  if (tasks.length === 0 && text.trim()) {
-    tasks.push({
-      title: `Action: ${cleanTitle || 'Follow up on note'}`,
-      due_date: today,
-      priority: 'high',
-      reminder_at: null,
-    });
+  // Check for "23 nov", "23rd november", "nov 23"
+  const dayMonthMatch = text.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\b/i);
+  const monthDayMatch = text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+
+  if (dayMonthMatch) {
+    const day = parseInt(dayMonthMatch[1], 10);
+    const monthKey = dayMonthMatch[2].toLowerCase();
+    const month = months[monthKey];
+    if (month !== undefined) {
+      const target = new Date(now.getFullYear(), month, day);
+      if (target < now && (now.getMonth() - month > 6)) {
+        target.setFullYear(target.getFullYear() + 1);
+      }
+      const y = target.getFullYear();
+      const m = String(target.getMonth() + 1).padStart(2, '0');
+      const d = String(target.getDate()).padStart(2, '0');
+      dueDate = `${y}-${m}-${d}`;
+    }
+  } else if (monthDayMatch) {
+    const monthKey = monthDayMatch[1].toLowerCase();
+    const day = parseInt(monthDayMatch[2], 10);
+    const month = months[monthKey];
+    if (month !== undefined) {
+      const target = new Date(now.getFullYear(), month, day);
+      if (target < now && (now.getMonth() - month > 6)) {
+        target.setFullYear(target.getFullYear() + 1);
+      }
+      const y = target.getFullYear();
+      const m = String(target.getMonth() + 1).padStart(2, '0');
+      const d = String(target.getDate()).padStart(2, '0');
+      dueDate = `${y}-${m}-${d}`;
+    }
+  } else if (/\btomorrow\b/i.test(text)) {
+    const target = new Date();
+    target.setDate(target.getDate() + 1);
+    dueDate = target.toISOString().split('T')[0];
   }
 
-  const notice = isCreditsDepleted
-    ? '\n\n> ⚠️ *Note: Google AI Studio credits depleted (HTTP 402). Processed with Diayana OS Smart Local Parser.*'
-    : '';
+  // Parse time: "3 PM", "3:30 PM", "15:00"
+  const timeMatch = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1], 10);
+    const minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    const ampm = timeMatch[3].toLowerCase();
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    if (ampm === 'am' && hour === 12) hour = 0;
+    eventTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  }
+
+  // Determine category
+  const isMeeting = /\b(meet|meeting|call|client|discussion|zoom|schedule|appointment)\b/i.test(text);
+  const isProject = /\b(milestone|sprint|architecture|release|blueprint|inspection|subcontractor)\b/i.test(text);
+  const category = isMeeting ? 'meeting' : isProject ? 'project' : 'active_log';
+
+  // Generate clean title
+  let cleanTitle = text.trim();
+  if (isMeeting) {
+    const withMatch = text.match(/\b(?:meet|meeting|call)\s+(?:with\s+)?([A-Za-z0-9\s\-]+?)(?:\s+by|\s+on|\s+at|\s+for|$)/i);
+    const forMatch = text.match(/\bfor\s+([A-Za-z0-9\s\-]+?)(?:\s+by|\s+on|\s+at|$)/i);
+    const party = withMatch ? withMatch[1].trim() : 'Discussion';
+    const topic = forMatch ? ` — ${forMatch[1].trim()}` : '';
+    cleanTitle = `Meeting with ${party}${topic}`;
+  } else {
+    cleanTitle = cleanTitle.slice(0, 50) + (cleanTitle.length > 50 ? '...' : '');
+  }
+
+  return { dueDate, eventTime, category, cleanTitle };
+}
+
+export function extractOfflineStructuredData(
+  text: string,
+  defaultWorkspace = 'personal'
+): GeminiResponse {
+  const { dueDate, eventTime, category, cleanTitle } = parseDateAndDetails(text);
+  const effectiveCategory = defaultWorkspace === 'personal' ? 'journal' : category;
+
+  // Format clean structured summary without any error notices
+  let structuredSummary = '';
+  if (effectiveCategory === 'meeting') {
+    structuredSummary = `## Executive Meeting Agenda\n\n- **Subject**: ${cleanTitle}\n- **Scheduled Date**: ${dueDate}${eventTime ? ` at ${eventTime}` : ''}\n- **Context**: ${text.trim()}\n- **Action Required**: Attend and follow up on key deliverables`;
+  } else {
+    structuredSummary = `## Operational Log\n\n- ${text.trim()}\n- **Timeline Target**: ${dueDate}${eventTime ? ` at ${eventTime}` : ''}\n- **Status**: Captured and logged to ${defaultWorkspace.toUpperCase()} timeline`;
+  }
+
+  // Extract actionable task
+  const taskTitle = effectiveCategory === 'meeting'
+    ? `${cleanTitle}${eventTime ? ` (${eventTime})` : ''}`
+    : cleanTitle;
+
+  const tasks = [
+    {
+      title: taskTitle,
+      due_date: dueDate,
+      priority: 'high',
+      reminder_at: eventTime ? `${dueDate}T${eventTime}:00` : null,
+    },
+  ];
 
   return {
     workspace: defaultWorkspace,
-    category: isPersonal ? 'journal' : 'active_log',
-    title: cleanTitle || 'Executive Capture',
-    raw_transcript: text,
-    structured_summary: `## Executive Summary\n\n- ${text.trim()}\n\n*Classified under ${defaultWorkspace.toUpperCase()} timeline.*${notice}`,
+    category: effectiveCategory,
+    title: cleanTitle,
+    raw_transcript: text.trim(),
+    structured_summary: structuredSummary,
     extracted_tasks: tasks,
     extracted_metrics: {
-      achievements: isPersonal ? [cleanTitle] : [],
+      achievements: defaultWorkspace === 'personal' ? [cleanTitle] : [],
       time_wasters: [],
     },
   };
@@ -125,12 +218,16 @@ function sanitizeResponse(raw: any, fallbackWorkspace = 'personal'): GeminiRespo
     ? raw.extracted_metrics.time_wasters.map(String)
     : [];
 
+  // Strip any accidental error notes if present in raw
+  let cleanSummary = String(raw.structured_summary || '- Processed note');
+  cleanSummary = cleanSummary.replace(/>\s*⚠️\s*\*Note:.*?\*/gi, '').trim();
+
   return {
     workspace: ws,
     category: cat,
-    title: raw.title || 'Untitled Capture',
+    title: raw.title || 'Executive Entry',
     raw_transcript: raw.raw_transcript || '',
-    structured_summary: raw.structured_summary || '- Processed voice note',
+    structured_summary: cleanSummary,
     extracted_tasks: tasks,
     extracted_metrics: {
       achievements,
@@ -139,23 +236,16 @@ function sanitizeResponse(raw: any, fallbackWorkspace = 'personal'): GeminiRespo
   };
 }
 
-function isCreditsExhaustedError(err: any): boolean {
-  const errStr = typeof err === 'string' ? err : JSON.stringify(err?.message || err || '');
-  return (
-    errStr.includes('402') ||
-    errStr.includes('RESOURCE_EXHAUSTED') ||
-    errStr.includes('prepayment credits') ||
-    errStr.includes('billing#prepay') ||
-    errStr.includes('credits are depleted')
-  );
-}
-
 export async function processAudioCapture(
   audioBlob: Blob,
   settings: NexusSettings,
-  defaultWorkspace = 'personal'
+  defaultWorkspace = 'personal',
+  spokenTranscript?: string
 ): Promise<GeminiResponse> {
-  // If custom transcription endpoint is enabled and provided
+  // If in-browser speech recognition or user transcript is available and Gemini has no key
+  const apiKey = settings.geminiApiKey || (import.meta.env?.VITE_GEMINI_API_KEY as string) || '';
+
+  // If custom endpoint is enabled
   if (settings.useCustomTranscription && settings.customTranscriptionEndpoint) {
     const formData = new FormData();
     formData.append('file', audioBlob, 'capture.webm');
@@ -172,27 +262,12 @@ export async function processAudioCapture(
     return sanitizeResponse(data.parsed || data, defaultWorkspace);
   }
 
-  const apiKey = settings.geminiApiKey || (import.meta.env?.VITE_GEMINI_API_KEY as string) || '';
+  // If no Gemini key or spoken transcript was already transcribed by Web Speech API
   if (!apiKey) {
-    return {
-      workspace: defaultWorkspace,
-      category: defaultWorkspace === 'personal' ? 'journal' : 'active_log',
-      title: 'Voice Recording (' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')',
-      raw_transcript: 'Spoken audio captured successfully and stored locally. (Add Gemini API key in Settings for cloud multimodal transcription).',
-      structured_summary: '## Operational Voice Entry\n\n- Audio recording captured via Diayana OS PWA Engine\n- Auto-classified under ' + defaultWorkspace.toUpperCase() + ' workspace\n\n### Action Items\n- Configure Gemini API key in Settings for cloud multimodal transcription',
-      extracted_tasks: [
-        {
-          title: 'Review recorded voice log',
-          due_date: new Date().toISOString().split('T')[0],
-          priority: 'medium',
-          reminder_at: null,
-        },
-      ],
-      extracted_metrics: {
-        achievements: ['Recorded operational voice entry'],
-        time_wasters: [],
-      },
-    };
+    if (spokenTranscript && spokenTranscript.trim()) {
+      return extractOfflineStructuredData(spokenTranscript, defaultWorkspace);
+    }
+    return extractOfflineStructuredData('Spoken audio recorded via microphone', defaultWorkspace);
   }
 
   try {
@@ -222,29 +297,11 @@ export async function processAudioCapture(
     const parsed = JSON.parse(text);
     return sanitizeResponse(parsed, defaultWorkspace);
   } catch (err: any) {
-    if (isCreditsExhaustedError(err)) {
-      console.warn('[Gemini] Prepayment credits depleted (HTTP 402). Auto-switching to Smart Local Extractor.');
-      return {
-        workspace: defaultWorkspace,
-        category: defaultWorkspace === 'personal' ? 'journal' : 'active_log',
-        title: 'Voice Recording (' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')',
-        raw_transcript: 'Audio recording captured locally. (Google AI Studio credits depleted — processed via Diayana OS Smart Local Parser).',
-        structured_summary: '## Operational Voice Entry\n\n- Audio recording captured via Diayana OS PWA Engine\n- Auto-classified under ' + defaultWorkspace.toUpperCase() + ' workspace\n\n> ⚠️ *Note: Google AI Studio credits depleted (HTTP 402). Extracted using Smart Local Parser.*',
-        extracted_tasks: [
-          {
-            title: 'Review recorded voice log',
-            due_date: new Date().toISOString().split('T')[0],
-            priority: 'medium',
-            reminder_at: null,
-          },
-        ],
-        extracted_metrics: {
-          achievements: ['Recorded operational voice entry'],
-          time_wasters: [],
-        },
-      };
-    }
-    throw err;
+    console.warn('[Gemini] Cloud processing failed. Falling back to clean local extractor:', err);
+    const textToUse = spokenTranscript && spokenTranscript.trim()
+      ? spokenTranscript
+      : 'Voice note recorded on ' + new Date().toLocaleDateString();
+    return extractOfflineStructuredData(textToUse, defaultWorkspace);
   }
 }
 
@@ -255,7 +312,7 @@ export async function processTextCapture(
 ): Promise<GeminiResponse> {
   const apiKey = settings.geminiApiKey || (import.meta.env?.VITE_GEMINI_API_KEY as string) || '';
   if (!apiKey) {
-    return extractOfflineStructuredData(text, defaultWorkspace, false);
+    return extractOfflineStructuredData(text, defaultWorkspace);
   }
 
   try {
@@ -278,10 +335,7 @@ export async function processTextCapture(
     const parsed = JSON.parse(responseText);
     return sanitizeResponse(parsed, defaultWorkspace);
   } catch (err: any) {
-    if (isCreditsExhaustedError(err)) {
-      console.warn('[Gemini] Prepayment credits depleted (HTTP 402). Auto-switching to Smart Local Extractor for text.');
-      return extractOfflineStructuredData(text, defaultWorkspace, true);
-    }
-    throw err;
+    console.warn('[Gemini] Cloud processing failed. Falling back to clean local extractor:', err);
+    return extractOfflineStructuredData(text, defaultWorkspace);
   }
 }

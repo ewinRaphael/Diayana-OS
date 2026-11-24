@@ -9,7 +9,7 @@ import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from '../lib/supabase
 const STORAGE_KEY = 'nexus_settings';
 
 export const DEFAULT_SETTINGS: NexusSettings = {
-  geminiApiKey: '',
+  geminiApiKey: (import.meta.env?.VITE_GEMINI_API_KEY as string) || '',
   geminiModel: 'gemini-2.5-flash',
   customTranscriptionEndpoint: '',
   useCustomTranscription: false,
@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: NexusSettings = {
   notificationsEnabled: true,
   activeIntegrations: {
     supabase: true,
-    gemini: false,
+    gemini: true,
     hermes: true,
     telegram: true,
     public_ip: true,
@@ -40,6 +40,7 @@ function loadSettings(): NexusSettings {
       return {
         ...DEFAULT_SETTINGS,
         ...parsed,
+        geminiApiKey: parsed.geminiApiKey || DEFAULT_SETTINGS.geminiApiKey,
         supabaseUrl: parsed.supabaseUrl || DEFAULT_SUPABASE_URL,
         supabaseAnonKey: parsed.supabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY,
       };
