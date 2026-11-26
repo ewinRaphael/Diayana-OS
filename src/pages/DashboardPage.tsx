@@ -6,11 +6,9 @@
 
 import { useState } from 'react';
 import {
-  Briefcase,
   CheckCircle2,
   ListTodo,
   TrendingUp,
-  FolderLock,
   Mic,
   Sparkles,
   ArrowRight,
@@ -22,6 +20,7 @@ import {
   CheckSquare,
   Plus,
   Scale,
+  ShieldCheck,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -31,6 +30,7 @@ import { useTasks } from '../hooks/useTasks';
 import { useProjects } from '../hooks/useProjects';
 import { useMetrics } from '../hooks/useMetrics';
 import { useMediaVault } from '../hooks/useMediaVault';
+import { useCredentialsVault } from '../hooks/useCredentialsVault';
 import { useSettings } from '../hooks/useSettings';
 import type { NavPage } from '../components/layout/Sidebar';
 import type { HabitItem } from '../lib/types';
@@ -66,6 +66,7 @@ export function DashboardPage({ onNavigate, onOpenCapture }: DashboardPageProps)
   const { media } = useMediaVault({
     workspace: activeWorkspace === 'all' ? undefined : activeWorkspace,
   });
+  const { credentials, securityAudit } = useCredentialsVault();
   const { settings } = useSettings();
 
   // Local interactive states
@@ -262,24 +263,24 @@ export function DashboardPage({ onNavigate, onOpenCapture }: DashboardPageProps)
         {/* Metric 4: Encrypted Vault Assets */}
         <Card
           hoverable
-          onClick={() => onNavigate('vault')}
+          onClick={() => onNavigate('keyvault')}
           className="p-5 flex flex-col justify-between space-y-2 cursor-pointer border border-border hover:border-indigo/50"
         >
           <div className="flex items-center justify-between text-text-muted">
             <span className="text-xs font-mono uppercase tracking-wider flex items-center gap-1.5">
-              <FolderLock className="w-3.5 h-3.5 text-indigo-light" />
-              <span>Vault Assets</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-purple-light" />
+              <span>KeyVault Security</span>
             </span>
             <div className="p-2 rounded-lg bg-indigo/15 text-indigo-light">
-              <Briefcase className="w-4 h-4" />
+              <ShieldCheck className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="text-2xl font-bold font-mono text-text-primary">
-              {media.length}
+              {credentials.length} Logins
             </div>
             <p className="text-[11px] text-text-muted mt-0.5">
-              {projects.length} Active Projects Tracked
+              {securityAudit.healthScore}% Security Health ({projects.length} Proj • {media.length} Files)
             </p>
           </div>
         </Card>

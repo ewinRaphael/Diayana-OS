@@ -14,6 +14,7 @@ export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type ProjectStatus = 'Planning' | 'Active' | 'On Hold' | 'Completed';
 
 export type FileType = 'photo' | 'document';
+export type VaultTab = 'passwords' | 'document' | 'photo';
 
 export interface Project {
   id: string;
@@ -102,6 +103,28 @@ export interface MediaItem {
   file_size_kb: number;
   caption: string;
   uploaded_at: string;
+}
+
+// ------------------------------------------------------------
+// KeyVault & Password Manager Types
+// ------------------------------------------------------------
+export type CredentialCategory = 'social' | 'devops' | 'finance' | 'business' | 'personal' | 'other';
+
+export interface CredentialItem {
+  id: string;
+  service_name: string; // e.g. "Facebook", "Google Workspace", "Hostinger VPS"
+  account_label: string; // e.g. "Personal Account", "Hashadz Agency Page", "Slash Core Admin"
+  username: string; // e.g. "@ashil_dev" or account handle / login ID
+  email: string; // Login email address
+  password: string; // Secure password (protected with Master Password)
+  website_url?: string; // Login URL e.g. "https://facebook.com"
+  category: CredentialCategory;
+  workspace: Workspace | 'all';
+  notes?: string; // 2FA backup codes, PIN, recovery notes, client notes
+  is_favorite?: boolean;
+  password_history?: { password: string; changed_at: string }[];
+  last_updated: string;
+  created_at: string;
 }
 
 export interface KeepAlive {

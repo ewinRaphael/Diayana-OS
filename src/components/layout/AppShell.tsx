@@ -1,5 +1,5 @@
 // ============================================================
-// NexusOS — App Shell Layout Container
+// Diayana OS 'Track balancing' — App Shell Layout Container
 // Unifies Sidebar, TopBar, MobileNav, FloatingFAB, and Modals
 // ============================================================
 
@@ -13,6 +13,7 @@ import { DashboardPage } from '../../pages/DashboardPage';
 import { BusinessWorkspace } from '../../pages/BusinessWorkspace';
 import { PersonalWorkspace } from '../../pages/PersonalWorkspace';
 import { CalendarPage } from '../../pages/CalendarPage';
+import { KeyVaultManager } from '../keyvault/KeyVaultManager';
 import { VaultPage } from '../../pages/VaultPage';
 import { SettingsPage } from '../../pages/SettingsPage';
 
@@ -51,6 +52,7 @@ export function AppShell() {
           {currentPage === 'business' && <BusinessWorkspace />}
           {currentPage === 'personal' && <PersonalWorkspace />}
           {currentPage === 'calendar' && <CalendarPage />}
+          {currentPage === 'keyvault' && <KeyVaultManager />}
           {currentPage === 'vault' && <VaultPage />}
           {currentPage === 'settings' && <SettingsPage />}
         </main>

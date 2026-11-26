@@ -1,5 +1,5 @@
 // ============================================================
-// NexusOS — Top Bar with Global Workspace Switcher
+// Diayana OS 'Track balancing' — Top Bar with Global Workspace Switcher
 // ============================================================
 
 import { Mic, Bell } from 'lucide-react';
@@ -20,11 +20,12 @@ const pageTitles: Record<NavPage, { title: string; subtitle: string }> = {
   business: { title: 'Business Operations', subtitle: 'Meetings, projects, and active handling logs' },
   personal: { title: 'Personal Diary & Habits', subtitle: 'Voice journals, daily reflection, and habit tracking' },
   calendar: { title: 'Dual Calendars', subtitle: 'Activity timeline and task action schedule' },
+  keyvault: { title: 'Password Manager & KeyVault', subtitle: 'Master-password protected credentials, multi-account manager & security audit' },
   vault: { title: 'Media & Document Vault', subtitle: 'Project blueprints, contracts, and photo timeline' },
   settings: { title: 'System Settings', subtitle: 'Gemini AI, Supabase persistence, and Hermes bridge' },
 };
 
-export function TopBar({ currentPage, onOpenCapture, onNavigate, className }: TopBarProps) {
+export function TopBar({ currentPage, onOpenCapture, className }: TopBarProps) {
   const { accentColor } = useWorkspace();
   const pageMeta = pageTitles[currentPage] || pageTitles.dashboard;
 
@@ -38,51 +39,46 @@ export function TopBar({ currentPage, onOpenCapture, onNavigate, className }: To
   return (
     <header
       className={cn(
-        'h-16 px-4 md:px-6 border-b border-border bg-charcoal/90 backdrop-blur-md flex items-center justify-between sticky top-0 z-30',
+        'h-16 px-4 md:px-6 border-b border-border bg-charcoal/80 backdrop-blur-md flex items-center justify-between gap-4 shrink-0',
         className
       )}
     >
-      {/* Left: Page Title */}
-      <div className="hidden lg:flex flex-col">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-text-primary leading-tight">
-            {pageMeta.title}
-          </h2>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-border/70 text-text-muted border border-border">
-            v2.1.0 Track balancing
-          </span>
-        </div>
-        <span className="text-[11px] text-text-muted">
+      {/* 1. Page Title & Subtitle */}
+      <div className="hidden sm:block min-w-0">
+        <h2 className="text-base font-bold text-text-primary tracking-tight truncate">
+          {pageMeta.title}
+        </h2>
+        <p className="text-xs text-text-muted truncate">
           {pageMeta.subtitle}
-        </span>
+        </p>
       </div>
 
-      {/* Center: Global Segmented Workspace Switcher */}
-      <div className="flex-1 lg:flex-none flex justify-center">
+      {/* 2. Global Segmented Workspace Switcher */}
+      <div className="flex-1 max-w-md mx-auto flex justify-center">
         <WorkspaceSwitcher />
       </div>
 
-      {/* Right: Actions */}
+      {/* 3. Header Action Buttons */}
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={onOpenCapture}
           className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-md transition-all cursor-pointer',
+            'flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white shadow-md transition-all transform hover:scale-102 active:scale-98 cursor-pointer',
             accentButtonMap[accentColor]
           )}
         >
-          <Mic className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Voice & Text AI</span>
+          <Mic className="w-4 h-4" />
+          <span className="hidden md:inline">Voice & Text AI</span>
         </button>
 
         <button
           type="button"
-          onClick={() => onNavigate('settings')}
-          className="p-2 text-text-muted hover:text-text-primary hover:bg-border/40 rounded-lg transition-colors cursor-pointer"
-          title="Notifications & Settings"
+          className="p-2 text-text-muted hover:text-text-primary rounded-xl hover:bg-border/40 transition-colors relative cursor-pointer"
+          title="Notifications"
         >
           <Bell className="w-4 h-4" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-purple animate-pulse" />
         </button>
       </div>
     </header>

@@ -1,5 +1,5 @@
 // ============================================================
-// NexusOS — Collapsible Navigation Sidebar (Desktop)
+// Diayana OS 'Track balancing' — Collapsible Navigation Sidebar
 // ============================================================
 
 import { useState } from 'react';
@@ -8,6 +8,7 @@ import {
   Briefcase,
   User,
   CalendarDays,
+  ShieldCheck,
   FolderLock,
   Settings,
   ChevronLeft,
@@ -17,7 +18,7 @@ import {
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { cn } from '../../lib/utils';
 
-export type NavPage = 'dashboard' | 'business' | 'personal' | 'calendar' | 'vault' | 'settings';
+export type NavPage = 'dashboard' | 'business' | 'personal' | 'calendar' | 'keyvault' | 'vault' | 'settings';
 
 interface SidebarProps {
   currentPage: NavPage;
@@ -52,6 +53,7 @@ export function Sidebar({ currentPage, onNavigate, className }: SidebarProps) {
     },
     { id: 'personal' as NavPage, label: 'Personal Life', icon: User },
     { id: 'calendar' as NavPage, label: 'Dual Calendars', icon: CalendarDays },
+    { id: 'keyvault' as NavPage, label: 'Password Manager', icon: ShieldCheck },
     { id: 'vault' as NavPage, label: 'Media & Vault', icon: FolderLock },
     { id: 'settings' as NavPage, label: 'Integrations', icon: Settings },
   ];
