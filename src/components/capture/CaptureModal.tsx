@@ -51,6 +51,8 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [spokenTranscript, setSpokenTranscript] = useState('');
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [eventTime, setEventTime] = useState('');
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -132,20 +134,22 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
     setIsSaving(true);
     setErrorMsg(null);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const title = textInput.trim().slice(0, 50) || 'Manual Note';
-      const content = textInput.trim() || 'Quick note captured without AI processing.';
+      const dateToSave = entryDate || new Date().toISOString().split('T')[0];
+      const title = textInput.trim().slice(0, 50) || (recordedBlob ? 'Voice Recording' : 'Quick Note');
+      const content = textInput.trim() || spokenTranscript.trim() || 'Captured note';
+      const isAudio = Boolean(recordedBlob || uploadedFile);
 
       await createEntry({
         workspace: selectedWorkspace,
         category: selectedWorkspace === 'personal' ? 'journal' : 'active_log',
         project_id: null,
         title,
-        raw_transcript: textInput,
+        raw_transcript: textInput || spokenTranscript,
         structured_content: `- ${content}`,
-        audio_url: null,
+        audio_url: isAudio ? 'voice_recording' : null,
         source: 'pwa',
-        entry_date: today,
+        entry_date: dateToSave,
+        event_time: eventTime.trim() || null,
       });
 
       setSaveSuccess(true);
@@ -166,9 +170,10 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
     setErrorMsg(null);
 
     try {
-      const ws = geminiResult.workspace as Workspace;
-      const cat = geminiResult.category as EntryCategory;
-      const today = new Date().toISOString().split('T')[0];
+      const ws = (geminiResult.workspace || selectedWorkspace) as Workspace;
+      const cat = (geminiResult.category || (ws === 'personal' ? 'journal' : 'active_log')) as EntryCategory;
+      const dateToSave = entryDate || new Date().toISOString().split('T')[0];
+      const isAudio = Boolean(recordedBlob || uploadedFile);
 
       // 1. Save entry
       await createEntry({
@@ -178,9 +183,10 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
         title: geminiResult.title,
         raw_transcript: geminiResult.raw_transcript,
         structured_content: geminiResult.structured_summary,
-        audio_url: null,
+        audio_url: isAudio ? 'voice_recording' : null,
         source: 'pwa',
-        entry_date: today,
+        entry_date: dateToSave,
+        event_time: eventTime.trim() || null,
       });
 
       // 2. Extract and auto-distribute tasks
@@ -192,7 +198,7 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
             title: t.title,
             status: 'todo',
             priority: (t.priority as any) || 'medium',
-            due_date: t.due_date || today,
+            due_date: t.due_date || dateToSave,
             reminder_at: t.reminder_at || null,
           });
         }
@@ -226,6 +232,8 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
     setUploadedFile(null);
     setTextInput('');
     setSpokenTranscript('');
+    setEntryDate(new Date().toISOString().split('T')[0]);
+    setEventTime('');
     setErrorMsg(null);
     setSaveSuccess(false);
     onClose();
@@ -518,14 +526,88 @@ export function CaptureModal({ isOpen, onClose }: CaptureModalProps) {
         {geminiResult && (
           <div className="space-y-4 animate-fade-in">
             <div className="p-4 bg-obsidian rounded-xl border border-border space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <Badge variant="workspace" value={geminiResult.workspace} />
-                  <Badge variant="status" value={geminiResult.category} />
+              {/* Target Workspace & Category Interactive Assignment */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-text-muted block">
+                    Save to Workspace:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {(['hashadz', 'slash', 'personal'] as Workspace[]).map((ws) => (
+                      <button
+                        key={ws}
+                        type="button"
+                        onClick={() => setGeminiResult({ ...geminiResult, workspace: ws })}
+                        className={cn(
+                          'px-2.5 py-1 rounded-md text-xs capitalize font-medium transition-all cursor-pointer',
+                          geminiResult.workspace === ws
+                            ? ws === 'hashadz'
+                              ? 'bg-indigo/25 text-indigo-light border border-indigo/50 font-bold'
+                              : ws === 'slash'
+                              ? 'bg-emerald/25 text-emerald-light border border-emerald/50 font-bold'
+                              : 'bg-amber/25 text-amber-light border border-amber/50 font-bold'
+                            : 'text-text-muted bg-charcoal hover:text-text-primary'
+                        )}
+                      >
+                        {ws}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <span className="text-[11px] font-mono text-text-muted">
-                  Auto-Classified by Gemini
-                </span>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-text-muted block">
+                    Classification:
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { id: 'journal', label: '📝 Note / Journal' },
+                      { id: 'meeting', label: '📅 Meeting' },
+                      { id: 'active_log', label: '⚡ Active Log' },
+                    ].map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setGeminiResult({ ...geminiResult, category: c.id as EntryCategory })}
+                        className={cn(
+                          'px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer',
+                          geminiResult.category === c.id
+                            ? 'bg-purple/25 text-purple-light border border-purple/50 font-bold'
+                            : 'text-text-muted bg-charcoal hover:text-text-primary'
+                        )}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Date & Time Settings */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1 border-b border-border/50">
+                <div>
+                  <label className="text-[10px] text-text-muted uppercase font-mono tracking-wider">
+                    Entry Date (Predated / Postdated)
+                  </label>
+                  <input
+                    type="date"
+                    value={entryDate}
+                    onChange={(e) => setEntryDate(e.target.value)}
+                    className="w-full text-xs font-mono bg-charcoal border border-border rounded-lg px-2.5 py-1.5 text-text-primary mt-1 focus:outline-none focus:ring-1 focus:ring-purple/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-text-muted uppercase font-mono tracking-wider">
+                    Scheduled Time (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={eventTime}
+                    onChange={(e) => setEventTime(e.target.value)}
+                    placeholder="e.g. 14:00 or 10:30 AM"
+                    className="w-full text-xs font-mono bg-charcoal border border-border rounded-lg px-2.5 py-1.5 text-text-primary mt-1 focus:outline-none focus:ring-1 focus:ring-purple/30"
+                  />
+                </div>
               </div>
 
               {/* Title */}

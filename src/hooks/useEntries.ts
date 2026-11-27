@@ -9,6 +9,14 @@ import type { EntryFilter } from '../lib/localStore';
 import { useDatabase } from '../contexts/DatabaseContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 
+export const ENTRIES_CHANGED_EVENT = 'nexus-entries-changed';
+
+export function notifyEntriesChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(ENTRIES_CHANGED_EVENT));
+  }
+}
+
 interface UseEntriesOptions {
   workspace?: Workspace;
   category?: EntryCategory;
@@ -56,8 +64,15 @@ export function useEntries(options: UseEntriesOptions = {}) {
   useEffect(() => {
     mountedRef.current = true;
     refreshEntries();
+
+    const handleEntriesChanged = () => {
+      refreshEntries();
+    };
+
+    window.addEventListener(ENTRIES_CHANGED_EVENT, handleEntriesChanged);
     return () => {
       mountedRef.current = false;
+      window.removeEventListener(ENTRIES_CHANGED_EVENT, handleEntriesChanged);
     };
   }, [refreshEntries]);
 
@@ -66,6 +81,7 @@ export function useEntries(options: UseEntriesOptions = {}) {
       if (!store) throw new Error('Database not ready');
       const created = await store.createEntry(entry);
       await refreshEntries();
+      notifyEntriesChanged();
       return created;
     },
     [store, refreshEntries],
@@ -76,6 +92,7 @@ export function useEntries(options: UseEntriesOptions = {}) {
       if (!store) throw new Error('Database not ready');
       const updated = await store.updateEntry(id, updates);
       await refreshEntries();
+      notifyEntriesChanged();
       return updated;
     },
     [store, refreshEntries],
@@ -86,6 +103,7 @@ export function useEntries(options: UseEntriesOptions = {}) {
       if (!store) throw new Error('Database not ready');
       await store.deleteEntry(id);
       await refreshEntries();
+      notifyEntriesChanged();
     },
     [store, refreshEntries],
   );

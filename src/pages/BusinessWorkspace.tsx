@@ -28,7 +28,7 @@ export function BusinessWorkspace() {
   const [activeTab, setActiveTab] = useState<string>('meetings');
 
   const tabs: TabItem[] = [
-    { id: 'meetings', label: 'Meetings & Plans', icon: <FileText className="w-4 h-4" /> },
+    { id: 'meetings', label: 'Notes, Meetings & Plans', icon: <FileText className="w-4 h-4" /> },
     { id: 'projects', label: 'Projects', icon: <FolderKanban className="w-4 h-4" /> },
     { id: 'logs', label: 'Active Handling Logs', icon: <Activity className="w-4 h-4" /> },
     { id: 'finance', label: 'Finance Bridge', icon: <Landmark className="w-4 h-4" /> },

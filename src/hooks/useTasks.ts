@@ -9,6 +9,14 @@ import type { TaskFilter } from '../lib/localStore';
 import { useDatabase } from '../contexts/DatabaseContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 
+export const TASKS_CHANGED_EVENT = 'nexus-tasks-changed';
+
+export function notifyTasksChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(TASKS_CHANGED_EVENT));
+  }
+}
+
 interface UseTasksOptions {
   workspace?: Workspace;
   status?: TaskStatus;
@@ -61,8 +69,15 @@ export function useTasks(options: UseTasksOptions = {}) {
   useEffect(() => {
     mountedRef.current = true;
     refreshTasks();
+
+    const handleTasksChanged = () => {
+      refreshTasks();
+    };
+
+    window.addEventListener(TASKS_CHANGED_EVENT, handleTasksChanged);
     return () => {
       mountedRef.current = false;
+      window.removeEventListener(TASKS_CHANGED_EVENT, handleTasksChanged);
     };
   }, [refreshTasks]);
 
@@ -71,6 +86,7 @@ export function useTasks(options: UseTasksOptions = {}) {
       if (!store) throw new Error('Database not ready');
       const created = await store.createTask(task);
       await refreshTasks();
+      notifyTasksChanged();
       return created;
     },
     [store, refreshTasks],
@@ -81,6 +97,7 @@ export function useTasks(options: UseTasksOptions = {}) {
       if (!store) throw new Error('Database not ready');
       const updated = await store.updateTask(id, updates);
       await refreshTasks();
+      notifyTasksChanged();
       return updated;
     },
     [store, refreshTasks],
@@ -91,6 +108,7 @@ export function useTasks(options: UseTasksOptions = {}) {
       if (!store) throw new Error('Database not ready');
       await store.deleteTask(id);
       await refreshTasks();
+      notifyTasksChanged();
     },
     [store, refreshTasks],
   );
@@ -103,6 +121,7 @@ export function useTasks(options: UseTasksOptions = {}) {
       const nextStatus = STATUS_CYCLE[task.status];
       const updated = await store.updateTask(id, { status: nextStatus });
       await refreshTasks();
+      notifyTasksChanged();
       return updated;
     },
     [store, tasks, refreshTasks],

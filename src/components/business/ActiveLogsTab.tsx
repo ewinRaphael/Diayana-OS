@@ -30,10 +30,10 @@ interface ActiveLogsTabProps {
 }
 
 export function ActiveLogsTab({ workspace }: ActiveLogsTabProps) {
-  const { entries, loading, createEntry, updateEntry, deleteEntry } = useEntries({
+  const { entries: allEntries, loading, createEntry, updateEntry, deleteEntry } = useEntries({
     workspace,
-    category: 'active_log',
   });
+  const entries = allEntries.filter((e) => e.category === 'active_log' || e.category === 'project');
   const { accentColor } = useWorkspace();
 
   const [quickLogText, setQuickLogText] = useState('');

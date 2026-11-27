@@ -13,6 +13,14 @@ import type {
 import { todayDate } from '../lib/localStore';
 import { useDatabase } from '../contexts/DatabaseContext';
 
+export const METRICS_CHANGED_EVENT = 'nexus-metrics-changed';
+
+export function notifyMetricsChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(METRICS_CHANGED_EVENT));
+  }
+}
+
 function dateOffset(baseDate: string, days: number): string {
   const [y, m, d] = baseDate.split('-').map(Number);
   const date = new Date(y, m - 1, d);
@@ -151,8 +159,15 @@ export function useMetrics(initialDate?: string) {
   useEffect(() => {
     mountedRef.current = true;
     refresh();
+
+    const handleMetricsChanged = () => {
+      refresh();
+    };
+
+    window.addEventListener(METRICS_CHANGED_EVENT, handleMetricsChanged);
     return () => {
       mountedRef.current = false;
+      window.removeEventListener(METRICS_CHANGED_EVENT, handleMetricsChanged);
     };
   }, [refresh]);
 
@@ -213,6 +228,7 @@ export function useMetrics(initialDate?: string) {
 
       const result = await store.upsertMetrics(merged);
       await refresh();
+      notifyMetricsChanged();
       return result;
     },
     [store, activeDate, refresh]

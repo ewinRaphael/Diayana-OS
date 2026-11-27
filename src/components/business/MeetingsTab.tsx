@@ -35,10 +35,10 @@ interface MeetingsTabProps {
 export function MeetingsTab({ workspace }: MeetingsTabProps) {
   const { entries, loading, createEntry, updateEntry, deleteEntry } = useEntries({
     workspace,
-    category: 'meeting',
   });
   const { accentColor } = useWorkspace();
 
+  const [filterType, setFilterType] = useState<'all' | 'meeting' | 'voice' | 'active_log'>('all');
   const [expandedTranscripts, setExpandedTranscripts] = useState<Record<string, boolean>>({});
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
@@ -137,16 +137,27 @@ export function MeetingsTab({ workspace }: MeetingsTabProps) {
     );
   }
 
+  const meetingCount = entries.filter((e) => e.category === 'meeting').length;
+  const voiceCount = entries.filter((e) => Boolean(e.audio_url || (e.raw_transcript && e.raw_transcript.length > 0))).length;
+  const logCount = entries.filter((e) => e.category === 'active_log' || e.category === 'project').length;
+
+  const filteredEntries = entries.filter((e) => {
+    if (filterType === 'meeting') return e.category === 'meeting';
+    if (filterType === 'voice') return Boolean(e.audio_url || (e.raw_transcript && e.raw_transcript.length > 0));
+    if (filterType === 'active_log') return e.category === 'active_log' || e.category === 'project';
+    return true;
+  });
+
   return (
     <div className="space-y-4">
       {/* Top Action Bar */}
-      <div className="flex items-center justify-between pb-1">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">
-            Meetings & Executive Decisions ({entries.length})
+            Notes, Meetings & Executive Activity ({entries.length})
           </h3>
           <p className="text-xs text-text-muted">
-            Track and review upcoming, live, and historical meetings for {workspace.toUpperCase()}
+            Track and review notes, meetings, and operational records for {workspace.toUpperCase()}
           </p>
         </div>
 
@@ -154,7 +165,7 @@ export function MeetingsTab({ workspace }: MeetingsTabProps) {
           type="button"
           onClick={handleOpenCreateModal}
           className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-md transition-all cursor-pointer',
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-md transition-all cursor-pointer self-start sm:self-auto',
             accentButtonMap[accentColor]
           )}
         >
@@ -163,14 +174,44 @@ export function MeetingsTab({ workspace }: MeetingsTabProps) {
         </button>
       </div>
 
-      {entries.length === 0 ? (
+      {/* Category Filter Switcher */}
+      {entries.length > 0 && (
+        <div className="flex items-center gap-1.5 p-1 bg-obsidian rounded-xl border border-border w-fit flex-wrap">
+          {[
+            { id: 'all', label: `All Activity (${entries.length})` },
+            { id: 'meeting', label: `Meetings (${meetingCount})` },
+            { id: 'voice', label: `Voice Notes (${voiceCount})` },
+            { id: 'active_log', label: `Handling Logs (${logCount})` },
+          ].map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFilterType(f.id as any)}
+              className={cn(
+                'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer',
+                filterType === f.id
+                  ? 'bg-charcoal text-text-primary shadow-sm border border-border'
+                  : 'text-text-muted hover:text-text-primary'
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {filteredEntries.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title="No Meetings Recorded"
-          description={`Record client meetings or strategic sessions for ${workspace.toUpperCase()} using the AI Voice capture or the New Meeting button.`}
+          title={entries.length === 0 ? 'No Records Found' : 'No Matching Entries'}
+          description={
+            entries.length === 0
+              ? `Capture voice notes, client meetings, or operational logs for ${workspace.toUpperCase()} using the AI Voice capture or the New Meeting button.`
+              : `No entries found for filter "${filterType}". Switch to "All Activity" to view all records.`
+          }
         />
       ) : (
-        entries.map((entry) => {
+        filteredEntries.map((entry) => {
           const isTranscriptOpen = Boolean(expandedTranscripts[entry.id]);
           const isToday = entry.entry_date === new Date().toISOString().split('T')[0];
           const isUpcoming = entry.entry_date > new Date().toISOString().split('T')[0];
@@ -180,10 +221,11 @@ export function MeetingsTab({ workspace }: MeetingsTabProps) {
               {/* Header */}
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-base font-semibold text-text-primary tracking-tight">
                       {entry.title}
                     </h3>
+                    <Badge variant="status" value={entry.category} />
                     {isToday && (
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald/20 text-emerald-light border border-emerald/30">
                         TODAY

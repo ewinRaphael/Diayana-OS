@@ -21,6 +21,10 @@ import {
   Plus,
   Scale,
   ShieldCheck,
+  Volume2,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -78,6 +82,16 @@ export function DashboardPage({ onNavigate, onOpenCapture }: DashboardPageProps)
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [telegramStatus, setTelegramStatus] = useState<Record<string, string>>({});
   const [isSendingTelegram, setIsSendingTelegram] = useState<string | null>(null);
+  const [activityViewTab, setActivityViewTab] = useState<'notes' | 'meetings'>('notes');
+  const [activityFilter, setActivityFilter] = useState<'all' | 'voice' | 'notes' | 'personal' | 'business'>('all');
+  const [expandedTranscripts, setExpandedTranscripts] = useState<Record<string, boolean>>({});
+
+  const toggleTranscript = (id: string) => {
+    setExpandedTranscripts((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
   // Compute consistency stats
   const consistencyStats = getConsistencyStats();
@@ -104,6 +118,17 @@ export function DashboardPage({ onNavigate, onOpenCapture }: DashboardPageProps)
       return dateB.localeCompare(dateA);
     })
     .slice(0, 5);
+
+  const voiceNotesCount = entries.filter((e) => Boolean(e.audio_url || (e.raw_transcript && e.raw_transcript.length > 0))).length;
+  const recentNotes = entries
+    .filter((e) => {
+      if (activityFilter === 'voice') return Boolean(e.audio_url || (e.raw_transcript && e.raw_transcript.length > 0));
+      if (activityFilter === 'notes') return e.category === 'journal' || (!e.audio_url && e.category !== 'meeting');
+      if (activityFilter === 'personal') return e.workspace === 'personal';
+      if (activityFilter === 'business') return e.workspace === 'hashadz' || e.workspace === 'slash';
+      return true;
+    })
+    .slice(0, 6);
 
   // Calculate Track Balancing Score (Ratio of Business vs Personal engagements)
   const businessEntriesCount = entries.filter((e) => e.workspace === 'hashadz' || e.workspace === 'slash').length;
@@ -288,87 +313,242 @@ export function DashboardPage({ onNavigate, onOpenCapture }: DashboardPageProps)
 
       {/* 2. Top Interactive Bento: Upcoming Events & Meetings (With Time) + Voice Hero */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left (7 cols): Upcoming Events & Meetings with Exact Time */}
-        <Card className="lg:col-span-7 p-5 space-y-4 border border-border">
-          <div className="flex items-center justify-between border-b border-border pb-3">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-purple-light" />
-              <h3 className="text-sm font-bold text-text-primary">
-                Upcoming Events & Meetings
-              </h3>
+        {/* Left (7 cols): Dual Activity & Notes Hub: Recent Notes & Voice Diary vs Upcoming Schedule */}
+        <Card className="lg:col-span-7 p-5 space-y-4 border border-border flex flex-col justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
+            {/* Mode Switcher Tabs */}
+            <div className="inline-flex items-center gap-1 p-1 bg-obsidian rounded-xl border border-border">
+              <button
+                type="button"
+                onClick={() => setActivityViewTab('notes')}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer',
+                  activityViewTab === 'notes'
+                    ? 'bg-charcoal text-text-primary shadow-sm border border-border'
+                    : 'text-text-muted hover:text-text-primary'
+                )}
+              >
+                <BookOpen className="w-3.5 h-3.5 text-purple-light" />
+                <span>Recent Notes & Voice Diary ({entries.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActivityViewTab('meetings')}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer',
+                  activityViewTab === 'meetings'
+                    ? 'bg-charcoal text-text-primary shadow-sm border border-border'
+                    : 'text-text-muted hover:text-text-primary'
+                )}
+              >
+                <Calendar className="w-3.5 h-3.5 text-indigo-light" />
+                <span>Schedule & Meetings ({meetingsAndEvents.length})</span>
+              </button>
             </div>
+
             <button
               type="button"
               onClick={() => onNavigate('calendar')}
-              className="text-xs text-text-muted hover:text-text-primary flex items-center gap-1 cursor-pointer font-medium"
+              className="text-xs text-text-muted hover:text-text-primary flex items-center gap-1 cursor-pointer font-medium self-start sm:self-auto"
             >
               <span>Dual Calendar View</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="space-y-2.5">
-            {meetingsAndEvents.length === 0 ? (
-              <p className="text-xs text-text-dim italic text-center py-6">
-                No meetings or scheduled events found. Use Voice capture or Calendar to add.
-              </p>
-            ) : (
-              meetingsAndEvents.map((evt) => {
-                const isToday = evt.entry_date === todayStr;
-                const isPredated = evt.entry_date < todayStr;
-                const isPostdated = evt.entry_date > todayStr;
-
-                return (
-                  <div
-                    key={evt.id}
-                    className="p-3 bg-obsidian rounded-xl border border-border flex items-center justify-between gap-3 hover:border-border-light transition-all"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="workspace" value={evt.workspace} />
-                        <span className="font-mono text-xs font-semibold text-text-primary truncate">
-                          {evt.title}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-[11px] font-mono text-text-muted">
-                        <span className="flex items-center gap-1 text-purple-light">
-                          <Clock className="w-3 h-3" />
-                          {evt.event_time || 'Scheduled Time'}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {evt.entry_date}
-                        </span>
-                        {isToday && (
-                          <span className="px-1.5 py-0.2 rounded bg-emerald/20 text-emerald-light text-[10px]">
-                            Today
-                          </span>
-                        )}
-                        {isPostdated && (
-                          <span className="px-1.5 py-0.2 rounded bg-indigo/20 text-indigo-light text-[10px]">
-                            Upcoming
-                          </span>
-                        )}
-                        {isPredated && (
-                          <span className="px-1.5 py-0.2 rounded bg-border/80 text-text-dim text-[10px]">
-                            Recorded Log
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
+          {/* Activity View 1: Recent Notes & Voice Diary */}
+          {activityViewTab === 'notes' && (
+            <div className="space-y-3">
+              {/* Filter pills for Notes */}
+              {entries.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                  {[
+                    { id: 'all', label: `All (${entries.length})` },
+                    { id: 'voice', label: `🎙️ Voice (${voiceNotesCount})` },
+                    { id: 'notes', label: `📝 Notes & Journal` },
+                    { id: 'business', label: `🏢 Business` },
+                    { id: 'personal', label: `🌱 Personal` },
+                  ].map((f) => (
                     <button
+                      key={f.id}
                       type="button"
-                      onClick={() => onNavigate('business')}
-                      className="px-2.5 py-1.5 rounded-lg bg-charcoal border border-border text-[11px] font-medium text-text-muted hover:text-text-primary hover:border-border-light shrink-0 cursor-pointer"
+                      onClick={() => setActivityFilter(f.id as any)}
+                      className={cn(
+                        'px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer',
+                        activityFilter === f.id
+                          ? 'bg-purple/20 text-purple-light border border-purple/40 font-semibold'
+                          : 'bg-obsidian text-text-muted hover:text-text-primary border border-border/60'
+                      )}
                     >
-                      Open Details
+                      {f.label}
                     </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+
+              {recentNotes.length === 0 ? (
+                <div className="text-center py-8 text-text-muted text-xs space-y-2">
+                  <BookOpen className="w-8 h-8 opacity-30 mx-auto" />
+                  <p className="italic">No entries recorded yet.</p>
+                  <button
+                    type="button"
+                    onClick={onOpenCapture}
+                    className="text-purple-light hover:underline font-semibold cursor-pointer"
+                  >
+                    + Record Voice Note or Type an Entry
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+                  {recentNotes.map((entry) => {
+                    const isVoice = Boolean(entry.audio_url || (entry.raw_transcript && entry.raw_transcript.length > 0));
+                    const isTranscriptOpen = Boolean(expandedTranscripts[entry.id]);
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className="p-3 bg-obsidian rounded-xl border border-border space-y-2 hover:border-border-light transition-all text-xs"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="workspace" value={entry.workspace} />
+                              <Badge variant="status" value={entry.category} />
+                              {isVoice && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber/15 text-amber-light text-[10px] font-mono border border-amber/30">
+                                  <Volume2 className="w-3 h-3" />
+                                  <span>Voice Note</span>
+                                </span>
+                              )}
+                              <span className="font-semibold text-text-primary truncate">
+                                {entry.title}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-3 text-[11px] font-mono text-text-muted">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-text-dim" />
+                                {entry.entry_date}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-text-dim" />
+                                {entry.event_time ||
+                                  new Date(entry.created_at).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => onNavigate(entry.workspace === 'personal' ? 'personal' : 'business')}
+                            className="px-2.5 py-1 rounded-lg bg-charcoal border border-border text-[11px] font-medium text-text-muted hover:text-text-primary hover:border-border-light shrink-0 cursor-pointer"
+                          >
+                            Open in Hub
+                          </button>
+                        </div>
+
+                        {/* Structured Snippet */}
+                        {entry.structured_content && (
+                          <div className="text-[11px] text-text-muted bg-charcoal/60 p-2 rounded-lg border border-border/50 line-clamp-2 leading-relaxed whitespace-pre-line">
+                            {entry.structured_content}
+                          </div>
+                        )}
+
+                        {/* Raw Transcript Toggle */}
+                        {entry.raw_transcript && (
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => toggleTranscript(entry.id)}
+                              className="text-[10px] font-mono text-purple-light hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              {isTranscriptOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              <span>{isTranscriptOpen ? 'Hide Audio Transcript' : 'View Spoken Transcript'}</span>
+                            </button>
+                            {isTranscriptOpen && (
+                              <p className="mt-1.5 p-2 bg-charcoal/90 border border-border rounded text-[11px] font-mono text-text-dim italic leading-relaxed animate-fade-in">
+                                "{entry.raw_transcript}"
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Activity View 2: Schedule & Meetings */}
+          {activityViewTab === 'meetings' && (
+            <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+              {meetingsAndEvents.length === 0 ? (
+                <p className="text-xs text-text-dim italic text-center py-8">
+                  No meetings or scheduled events found. Use Voice capture or Calendar to add.
+                </p>
+              ) : (
+                meetingsAndEvents.map((evt) => {
+                  const isToday = evt.entry_date === todayStr;
+                  const isPredated = evt.entry_date < todayStr;
+                  const isPostdated = evt.entry_date > todayStr;
+
+                  return (
+                    <div
+                      key={evt.id}
+                      className="p-3 bg-obsidian rounded-xl border border-border flex items-center justify-between gap-3 hover:border-border-light transition-all"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="workspace" value={evt.workspace} />
+                          <span className="font-mono text-xs font-semibold text-text-primary truncate">
+                            {evt.title}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] font-mono text-text-muted">
+                          <span className="flex items-center gap-1 text-purple-light">
+                            <Clock className="w-3 h-3" />
+                            {evt.event_time || 'Scheduled Time'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {evt.entry_date}
+                          </span>
+                          {isToday && (
+                            <span className="px-1.5 py-0.2 rounded bg-emerald/20 text-emerald-light text-[10px]">
+                              Today
+                            </span>
+                          )}
+                          {isPostdated && (
+                            <span className="px-1.5 py-0.2 rounded bg-indigo/20 text-indigo-light text-[10px]">
+                              Upcoming
+                            </span>
+                          )}
+                          {isPredated && (
+                            <span className="px-1.5 py-0.2 rounded bg-border/80 text-text-dim text-[10px]">
+                              Recorded Log
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onNavigate(evt.workspace === 'personal' ? 'personal' : 'business')}
+                        className="px-2.5 py-1.5 rounded-lg bg-charcoal border border-border text-[11px] font-medium text-text-muted hover:text-text-primary hover:border-border-light shrink-0 cursor-pointer"
+                      >
+                        Open Details
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </Card>
 
         {/* Right (5 cols): AI Multimodal Voice & Text Capture Box */}
